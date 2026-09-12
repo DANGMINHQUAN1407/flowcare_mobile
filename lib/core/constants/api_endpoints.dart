@@ -37,6 +37,15 @@ class ApiEndpoints {
   static const String routingRecommendations = '/routing-recommendations';
   static String routingByEncounter(String encounterId) => '/routing-recommendations/by-encounter/$encounterId';
 
+  // Doctors & Doctor Schedules
+  static const String doctors = '/doctors';
+  static const String doctorSchedules = '/doctor-schedules';
+
+  // Follow-up Orders (Tái khám)
+  static const String followUpOrders = '/follow-up-orders';
+  static String followUpOrdersByPatient(String patientId) => '/follow-up-orders/patient/$patientId';
+
   // Notifications
   static const String notifications = '/notifications';
 }
+

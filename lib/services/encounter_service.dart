@@ -7,8 +7,10 @@ class EncounterService {
 
   EncounterService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
-  /// Gets the patient-facing status summary for a specific encounter
+  /// Gets the patient-facing status summary for a specific encounter (both Walk-in and Online)
+  /// BE Endpoint: GET /api/v1/encounters/{id}/status
   Future<EncounterSummaryModel?> getEncounterStatusSummary(String encounterId) async {
+    if (encounterId.isEmpty) return null;
     try {
       final response = await _apiClient.get<EncounterSummaryModel?>(
         ApiEndpoints.encounterStatus(encounterId),
