@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import '../models/appointment_model.dart';
+import '../models/follow_up_order_model.dart';
+import '../models/medical_record_model.dart';
 import '../models/patient_model.dart';
 import '../models/service_type_model.dart';
 import '../services/appointment_service.dart';
+import '../services/follow_up_service.dart';
 import '../services/patient_service.dart';
 import '../services/patient_session_service.dart';
 import '../services/service_type_service.dart';
@@ -12,22 +15,35 @@ class BookingProvider extends ChangeNotifier {
   final PatientService _patientService;
   final AppointmentService _appointmentService;
   final ServiceTypeService _serviceTypeService;
+  final FollowUpService _followUpService;
   final PatientSessionService _sessionService;
 
   BookingProvider({
     PatientService? patientService,
     AppointmentService? appointmentService,
     ServiceTypeService? serviceTypeService,
+    FollowUpService? followUpService,
     PatientSessionService? sessionService,
   })  : _patientService = patientService ?? PatientService(),
         _appointmentService = appointmentService ?? AppointmentService(),
         _serviceTypeService = serviceTypeService ?? ServiceTypeService(),
+        _followUpService = followUpService ?? FollowUpService(),
         _sessionService = sessionService ?? PatientSessionService();
 
   // State
   PatientModel? _patient;
   AppointmentModel? _existingAppointment;
   bool _hasExistingAppointment = false;
+
+  // Follow-Up (Tái khám) State
+  bool _isFollowUp = false;
+  String? _followUpOrderId;
+  String? _originalDoctorId;
+  String? _originalDoctorName;
+  String? _previousDiagnosis;
+  String? _followUpAdvice;
+  DateTime? _recommendedFollowUpDate;
+  List<FollowUpOrderModel> _pendingFollowUpOrders = [];
 
   // Patient administrative input state
   String _fullName = '';
@@ -40,8 +56,9 @@ class BookingProvider extends ChangeNotifier {
   String _selectedCategory = 'prenatal';
 
   // Obstetric Self-Declaration (Khám thai)
-  int? _gestationalWeeks;
-  int? _gestationalDays;
+  String _pregnancyType = 'Đơn thai (1 thai nhi)';
+  int? _gestationalWeeks = 28;
+  int? _gestationalDays = 3;
   DateTime? _lmp; // Last Menstrual Period
   DateTime? _edd; // Expected Due Date
   int _gravida = 1;
@@ -49,7 +66,10 @@ class BookingProvider extends ChangeNotifier {
   int _abortion = 0;
   int _living = 0;
   String? _obstetricHistoryNotes;
-  String _fetalMovementStatus = 'Bình thường'; // 'Bình thường' | 'Yếu / Ít hơn' | 'Chưa cảm nhận'
+  String _fetalMovementStatus = 'Thai máy tốt (>= 4 lần/giờ - Bình thường)';
+  String _vatVaccine = 'Đã tiêm VAT 1 (Tuần 20-24)';
+  String _prenatalVisitReason = 'Khám thai định kỳ & Siêu âm Thai 4D / Doppler Màu';
+  final List<String> _selectedObstetricHistory = ['Con so (Lần đầu mang thai)'];
   final List<String> _selectedWarningSigns = [];
 
   // Gynecological Self-Declaration (Khám phụ khoa)
@@ -81,6 +101,15 @@ class BookingProvider extends ChangeNotifier {
   AppointmentModel? get existingAppointment => _existingAppointment;
   bool get hasExistingAppointment => _hasExistingAppointment;
 
+  bool get isFollowUp => _isFollowUp;
+  String? get followUpOrderId => _followUpOrderId;
+  String? get originalDoctorId => _originalDoctorId;
+  String? get originalDoctorName => _originalDoctorName;
+  String? get previousDiagnosis => _previousDiagnosis;
+  String? get followUpAdvice => _followUpAdvice;
+  DateTime? get recommendedFollowUpDate => _recommendedFollowUpDate;
+  List<FollowUpOrderModel> get pendingFollowUpOrders => _pendingFollowUpOrders;
+
   String get fullName => _fullName;
   String get phone => _phone;
   DateTime? get dob => _dob;
@@ -88,6 +117,7 @@ class BookingProvider extends ChangeNotifier {
   String? get address => _address;
 
   String get selectedCategory => _selectedCategory;
+  String get pregnancyType => _pregnancyType;
   int? get gestationalWeeks => _gestationalWeeks;
   int? get gestationalDays => _gestationalDays;
   DateTime? get lmp => _lmp;
@@ -98,6 +128,9 @@ class BookingProvider extends ChangeNotifier {
   int get living => _living;
   String? get obstetricHistoryNotes => _obstetricHistoryNotes;
   String get fetalMovementStatus => _fetalMovementStatus;
+  String get vatVaccine => _vatVaccine;
+  String get prenatalVisitReason => _prenatalVisitReason;
+  List<String> get selectedObstetricHistory => _selectedObstetricHistory;
   List<String> get selectedWarningSigns => _selectedWarningSigns;
 
   String? get gynVisitReason => _gynVisitReason;
@@ -154,6 +187,11 @@ class BookingProvider extends ChangeNotifier {
       !_isSubmitting;
 
   // Setters
+  void setIsFollowUp(bool val) {
+    _isFollowUp = val;
+    notifyListeners();
+  }
+
   void setFullName(String val) {
     _fullName = val;
     notifyListeners();
@@ -191,7 +229,106 @@ class BookingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Follow-up setup helper from a previous medical record
+  void setupFollowUpFromRecord(MedicalRecordModel record) {
+    _isFollowUp = true;
+    _originalDoctorName = record.doctorName;
+    _previousDiagnosis = record.diagnosis;
+    _followUpAdvice = record.doctorAdvice;
+    _recommendedFollowUpDate = record.followUpDate ?? DateTime.now().add(const Duration(days: 14));
+
+    if (_recommendedFollowUpDate != null && _recommendedFollowUpDate!.isAfter(DateTime.now())) {
+      _selectedDate = _recommendedFollowUpDate!;
+    } else {
+      _selectedDate = DateTime.now().add(const Duration(days: 1));
+    }
+
+    final lowerDept = record.departmentName.toLowerCase();
+    if (lowerDept.contains('sản') || lowerDept.contains('thai')) {
+      _selectedCategory = 'prenatal';
+    } else if (lowerDept.contains('phụ khoa')) {
+      _selectedCategory = 'gynecology';
+    } else {
+      _selectedCategory = 'other';
+    }
+
+    if (record.vitalSigns?.gestationalWeeks != null) {
+      _gestationalWeeks = record.vitalSigns!.gestationalWeeks;
+    }
+
+    _clinicalNotes = 'Tái khám theo hẹn của ${record.doctorName} (Chẩn đoán trước: ${record.diagnosis})';
+
+    // Refresh matching service and fetch slots
+    final matching = filteredServices;
+    if (matching.isNotEmpty) {
+      _selectedService = matching.first;
+      _fetchSlots();
+    }
+    notifyListeners();
+  }
+
+  // Follow-up setup helper from a follow-up order
+  void setupFollowUpFromOrder(FollowUpOrderModel order) {
+    _isFollowUp = true;
+    _followUpOrderId = order.id;
+    _originalDoctorId = order.originalDoctorId;
+    _originalDoctorName = order.originalDoctorName;
+    _previousDiagnosis = order.diagnosis;
+    _followUpAdvice = order.notes;
+    _recommendedFollowUpDate = order.targetDate;
+
+    if (order.targetDate.isAfter(DateTime.now())) {
+      _selectedDate = order.targetDate;
+    } else {
+      _selectedDate = DateTime.now().add(const Duration(days: 1));
+    }
+
+    _clinicalNotes = 'Tái khám theo phiếu chỉ định #${order.id.length >= 8 ? order.id.substring(0, 8).toUpperCase() : order.id} của BS. ${order.originalDoctorName}';
+
+    final matching = filteredServices;
+    if (matching.isNotEmpty) {
+      _selectedService = matching.first;
+      _fetchSlots();
+    }
+    notifyListeners();
+  }
+
+  void clearFollowUp() {
+    _isFollowUp = false;
+    _followUpOrderId = null;
+    _originalDoctorId = null;
+    _originalDoctorName = null;
+    _previousDiagnosis = null;
+    _followUpAdvice = null;
+    _recommendedFollowUpDate = null;
+    notifyListeners();
+  }
+
   // Obstetric setters
+  void setPregnancyType(String type) {
+    _pregnancyType = type;
+    notifyListeners();
+  }
+
+  void setVatVaccine(String vat) {
+    _vatVaccine = vat;
+    notifyListeners();
+  }
+
+  void setPrenatalVisitReason(String reason) {
+    _prenatalVisitReason = reason;
+    notifyListeners();
+  }
+
+  void toggleObstetricHistory(String item) {
+    if (_selectedObstetricHistory.contains(item)) {
+      _selectedObstetricHistory.remove(item);
+    } else {
+      _selectedObstetricHistory.add(item);
+    }
+    notifyListeners();
+  }
+
   void setGestationalWeeks(int? weeks) {
     _gestationalWeeks = weeks;
     notifyListeners();
@@ -304,6 +441,13 @@ class BookingProvider extends ChangeNotifier {
           _address = _patient!.address ?? _address;
           if (_patient!.gestationalWeeks != null) {
             _gestationalWeeks = _patient!.gestationalWeeks;
+          }
+
+          // Fetch pending follow-up orders for this patient
+          try {
+            _pendingFollowUpOrders = await _followUpService.getFollowUpOrdersByPatient(_patient!.id);
+          } catch (_) {
+            _pendingFollowUpOrders = [];
           }
         }
       }
@@ -447,6 +591,8 @@ class BookingProvider extends ChangeNotifier {
         scheduledTime: _selectedSlot!.startTime,
         status: 1, // Confirmed
         source: 0, // Online
+        followUpOrderId: _followUpOrderId,
+        doctorId: _originalDoctorId,
       );
 
       _bookingSuccessResult = result;
@@ -469,6 +615,13 @@ class BookingProvider extends ChangeNotifier {
     _selectedSlot = null;
     _hasExistingAppointment = false;
     _existingAppointment = null;
+    _isFollowUp = false;
+    _followUpOrderId = null;
+    _originalDoctorId = null;
+    _originalDoctorName = null;
+    _previousDiagnosis = null;
+    _followUpAdvice = null;
+    _recommendedFollowUpDate = null;
     _fullName = '';
     _phone = '';
     _dob = null;
@@ -485,3 +638,4 @@ class BookingProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
+
