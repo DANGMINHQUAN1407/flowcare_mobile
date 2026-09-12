@@ -62,7 +62,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
       HomeScreen(onNavigateToTab: _onTabSelected),
       BookingScreen(onNavigateToTab: _onTabSelected),
       const RouteScreen(),
-      const HistoryScreen(),
+      HistoryScreen(onNavigateToTab: _onTabSelected),
       const ProfileScreen(),
     ];
 

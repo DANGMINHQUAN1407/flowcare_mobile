@@ -176,7 +176,7 @@ class RouteScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Phòng chỉ định: $deptName (Phòng khám Sản VIP 1)',
+            'Phòng chỉ định: $deptName (Phòng Khám Sản 1 - BS. CKI Nguyễn Thị Mai Hoa)',
             style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w700,
@@ -310,8 +310,8 @@ class RouteScreen extends StatelessWidget {
           stepNumber: '3',
           title: 'Khám chuyên khoa & Tư vấn Sản - Phụ khoa',
           room: summary?.departmentName != null
-              ? '${summary!.departmentName} • Phòng khám Sản VIP 1 (P.301)'
-              : 'Phòng khám Sản VIP 1 (Tầng 2 - Khu B)',
+              ? '${summary!.departmentName} • Phòng Khám Sản 1 - P.301 (BS. CKI Nguyễn Thị Mai Hoa)'
+              : 'Phòng Khám Sản 1 - P.301 (BS. CKI Nguyễn Thị Mai Hoa)',
           status: isCompleted
               ? 'Đã hoàn tất'
               : (isConsulting ? 'Đang trong phòng khám' : (isCheckedIn ? 'Đang chờ gọi số' : 'Bước tiếp theo')),

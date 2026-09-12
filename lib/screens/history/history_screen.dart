@@ -6,12 +6,18 @@ import '../../models/appointment_model.dart';
 import '../../models/medical_record_model.dart';
 import '../../providers/history_provider.dart';
 import '../../providers/home_provider.dart';
+import '../../providers/booking_provider.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/error_state_widget.dart';
 import '../../widgets/loading_state_widget.dart';
 
 class HistoryScreen extends StatelessWidget {
-  const HistoryScreen({super.key});
+  final void Function(int tabIndex)? onNavigateToTab;
+
+  const HistoryScreen({
+    super.key,
+    this.onNavigateToTab,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -687,6 +693,46 @@ class HistoryScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 ...record.labOrders.map((order) => _buildLabOrderTile(order)),
+
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 14),
+
+                // Button: Đặt lịch tái khám theo hẹn
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
+                      bookingProvider.setupFollowUpFromRecord(record);
+                      onNavigateToTab?.call(1);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Đã chuyển sang màn hình Đặt lịch tái khám với ${record.doctorName}.'),
+                          backgroundColor: const Color(0xFF0077C8),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0077C8),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: const Icon(Icons.sync_rounded, size: 18),
+                    label: const Text(
+                      'Đặt Lịch Tái Khám Ngay',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

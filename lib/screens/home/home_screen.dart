@@ -6,6 +6,7 @@ import '../../core/theme/app_text_styles.dart';
 import '../../models/appointment_model.dart';
 import '../../models/encounter_summary_model.dart';
 import '../../models/patient_model.dart';
+import '../../providers/booking_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../widgets/error_state_widget.dart';
 import '../../widgets/loading_state_widget.dart';
@@ -560,13 +561,25 @@ class HomeScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: encounter.isEmergency ? AppColors.emergencyLight : AppColors.primaryLight,
+                  color: encounter.isEmergency
+                      ? AppColors.emergencyLight
+                      : (!homeProvider.hasActiveAppointment
+                          ? AppColors.secondaryLight
+                          : AppColors.primaryLight),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  statusText.toUpperCase(),
+                  encounter.isEmergency
+                      ? 'CẤP CỨU KHẨN CẤP'
+                      : (!homeProvider.hasActiveAppointment
+                          ? 'TIẾP NHẬN TẠI QUẦY (VÃNG LAI)'
+                          : statusText.toUpperCase()),
                   style: TextStyle(
-                    color: encounter.isEmergency ? AppColors.emergency : AppColors.primary,
+                    color: encounter.isEmergency
+                        ? AppColors.emergency
+                        : (!homeProvider.hasActiveAppointment
+                            ? AppColors.secondary
+                            : AppColors.primary),
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                   ),
@@ -770,7 +783,7 @@ class HomeScreen extends StatelessWidget {
               Navigator.pop(dialogCtx);
               if (phone.isNotEmpty) {
                 homeProvider.switchPhone(phone);
-                onNavigateToTab?.call(2);
+                onNavigateToTab?.call(0);
               }
             },
           ),
@@ -912,6 +925,36 @@ class HomeScreen extends StatelessWidget {
                 iconColor: AppColors.warning,
                 iconBgColor: AppColors.warningLight,
                 onTap: () => onNavigateToTab?.call(4),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildActionCard(
+                title: 'Đặt lịch tái khám',
+                subtitle: 'Theo chỉ định bác sĩ',
+                icon: Icons.sync_rounded,
+                iconColor: const Color(0xFF0077C8),
+                iconBgColor: const Color(0xFFEBF5FF),
+                onTap: () {
+                  final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
+                  bookingProvider.setIsFollowUp(true);
+                  onNavigateToTab?.call(1);
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildActionCard(
+                title: 'Lịch sử khám & Đơn',
+                subtitle: 'Xem toa thuốc điện tử',
+                icon: Icons.receipt_long_rounded,
+                iconColor: AppColors.success,
+                iconBgColor: AppColors.successLight,
+                onTap: () => onNavigateToTab?.call(3),
               ),
             ),
           ],

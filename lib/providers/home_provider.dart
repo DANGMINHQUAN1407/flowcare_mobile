@@ -5,6 +5,7 @@ import '../models/patient_model.dart';
 import '../models/queue_ticket_model.dart';
 import '../services/appointment_service.dart';
 import '../services/encounter_service.dart';
+import '../services/follow_up_service.dart';
 import '../services/patient_service.dart';
 import '../services/patient_session_service.dart';
 import '../services/queue_service.dart';
@@ -15,6 +16,7 @@ class HomeProvider extends ChangeNotifier {
   final EncounterService _encounterService;
   final QueueService _queueService;
   final PatientSessionService _sessionService;
+  final FollowUpService _followUpService;
 
   HomeProvider({
     PatientService? patientService,
@@ -22,11 +24,13 @@ class HomeProvider extends ChangeNotifier {
     EncounterService? encounterService,
     QueueService? queueService,
     PatientSessionService? sessionService,
+    FollowUpService? followUpService,
   })  : _patientService = patientService ?? PatientService(),
         _appointmentService = appointmentService ?? AppointmentService(),
         _encounterService = encounterService ?? EncounterService(),
         _queueService = queueService ?? QueueService(),
-        _sessionService = sessionService ?? PatientSessionService() {
+        _sessionService = sessionService ?? PatientSessionService(),
+        _followUpService = followUpService ?? FollowUpService() {
     loadHomeData();
   }
 
@@ -79,6 +83,18 @@ class HomeProvider extends ChangeNotifier {
       }
 
       // 1. Fetch Patient Info & Active Appointment Check concurrently
+      final isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(phone);
+
+      if (isUuid) {
+        _encounterSummary = await _encounterService.getEncounterStatusSummary(phone);
+        _queueTicket = await _queueService.getQueueTicketByEncounter(phone);
+        if (_encounterSummary != null) {
+          _sessionService.setActiveEncounterId(phone);
+        }
+        _errorMessage = null;
+        return;
+      }
+
       final results = await Future.wait([
         _patientService.searchPatientByPhone(phone).catchError((_) => null),
         _appointmentService.checkAppointmentByPhone(phone).catchError(
@@ -93,8 +109,44 @@ class HomeProvider extends ChangeNotifier {
         _sessionService.setPatientId(_patient!.id);
       }
 
-      // 2. If encounterId exists in session or linked from appointment check, fetch live encounter summary
-      final activeEncounterId = _appointmentCheck?.activeEncounterId ?? _sessionService.activeEncounterId;
+      // 2. Resolve Active Encounter ID:
+      // Priority A: Linked from online appointment check
+      // Priority B: Stored in session from check-in
+      // Priority C: Check patient follow-up orders (GET /follow-up-orders/patient/{patientId})
+      // Priority D: Check patient appointments list (GET /appointments?patientId=...)
+      String? activeEncounterId = _appointmentCheck?.activeEncounterId ?? _sessionService.activeEncounterId;
+
+      if ((activeEncounterId == null || activeEncounterId.isEmpty) && _patient != null) {
+        try {
+          final followUpOrders = await _followUpService.getFollowUpOrdersByPatient(_patient!.id);
+          if (followUpOrders.isNotEmpty) {
+            for (final order in followUpOrders) {
+              if (order.encounterId.isNotEmpty) {
+                final testSummary = await _encounterService.getEncounterStatusSummary(order.encounterId);
+                if (testSummary != null) {
+                  activeEncounterId = order.encounterId;
+                  break;
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      if ((activeEncounterId == null || activeEncounterId.isEmpty) && _patient != null) {
+        try {
+          final patientAppts = await _appointmentService.getAppointmentsByPatient(_patient!.id);
+          if (patientAppts.isNotEmpty) {
+            final latestAppt = patientAppts.first;
+            // Test if appointment id maps to an encounter status
+            final testSummary = await _encounterService.getEncounterStatusSummary(latestAppt.id);
+            if (testSummary != null) {
+              activeEncounterId = latestAppt.id;
+            }
+          }
+        } catch (_) {}
+      }
+
       if (activeEncounterId != null && activeEncounterId.isNotEmpty) {
         _sessionService.setActiveEncounterId(activeEncounterId);
         _encounterSummary = await _encounterService.getEncounterStatusSummary(activeEncounterId);
@@ -114,13 +166,19 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
-  void setDemoPhone(String phone) {
+  void setDemoPhone(String phone, {String? encounterId}) {
     _sessionService.setPhone(phone);
+    if (encounterId != null && encounterId.isNotEmpty) {
+      _sessionService.setActiveEncounterId(encounterId);
+    }
     loadHomeData();
   }
 
-  void switchPhone(String phone) {
+  void switchPhone(String phone, {String? encounterId}) {
     _sessionService.setPhone(phone);
+    if (encounterId != null && encounterId.isNotEmpty) {
+      _sessionService.setActiveEncounterId(encounterId);
+    }
     loadHomeData();
   }
 

@@ -49,3 +49,6 @@ app.*.map.json
 
 # Emulator test screenshots
 emulator_*.png
+
+# DevTools
+devtools_options.yaml
