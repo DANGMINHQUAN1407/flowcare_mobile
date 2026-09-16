@@ -83,7 +83,7 @@ class BookingProvider extends ChangeNotifier {
   // Services & Slots
   List<ServiceTypeModel> _services = [];
   ServiceTypeModel? _selectedService;
-  DateTime _selectedDate = DateTime.now().add(const Duration(days: 1)); // Default tomorrow
+  DateTime _selectedDate = DateTime.now(); // Default today
   List<AppointmentSlotModel> _availableSlots = [];
   AppointmentSlotModel? _selectedSlot;
 
@@ -179,14 +179,113 @@ class BookingProvider extends ChangeNotifier {
 
   /// Can submit booking check
   bool get canSubmit =>
-      _fullName.trim().isNotEmpty &&
-      _phone.trim().length >= 10 &&
+      ((_patient != null && _patient!.fullName.isNotEmpty && _patient!.phone.isNotEmpty) ||
+          (_fullName.trim().isNotEmpty && _phone.trim().length >= 10)) &&
       _selectedService != null &&
       _selectedSlot != null &&
       _selectedSlot!.isAvailable &&
       !_isSubmitting;
 
-  // Setters
+  // Setters & Patient Profile Management
+  void selectPatient(PatientModel p) {
+    _patient = p;
+    _fullName = p.fullName;
+    _phone = p.phone;
+    _dob = p.dob != null ? DateTime.tryParse(p.dob!) : null;
+    _nationalId = p.nationalId;
+    _address = p.address;
+    if (p.gestationalWeeks != null) {
+      _gestationalWeeks = p.gestationalWeeks;
+    }
+    _sessionService.setPhone(p.phone);
+    _sessionService.setPatientId(p.id);
+
+    // Also reload pending follow up orders for this patient
+    _followUpService.getFollowUpOrdersByPatient(p.id).then((orders) {
+      _pendingFollowUpOrders = orders;
+      notifyListeners();
+    }).catchError((_) {
+      _pendingFollowUpOrders = [];
+      notifyListeners();
+    });
+
+    notifyListeners();
+  }
+
+  void clearSelectedPatient() {
+    _patient = null;
+    _fullName = '';
+    _phone = '';
+    _dob = null;
+    _nationalId = null;
+    _address = null;
+    _pendingFollowUpOrders = [];
+    notifyListeners();
+  }
+
+  /// Create a new patient profile and immediately select it for booking
+  Future<PatientModel> createAndSelectPatient({
+    required String fullName,
+    required String phone,
+    String? dob,
+    String? gender,
+    String? nationalId,
+    String? address,
+    String? bloodGroup,
+    String? rhFactor,
+    num? heightCm,
+    num? prePregnancyWeight,
+    String? allergies,
+    String? medicalHistory,
+  }) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final newPatient = await _patientService.createPatient(
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        dob: dob,
+        gender: gender ?? 'Female',
+        nationalId: nationalId?.trim(),
+        address: address?.trim(),
+        bloodGroup: bloodGroup ?? 'O',
+        rhFactor: rhFactor ?? 'Rh+',
+        heightCm: heightCm ?? 162,
+        prePregnancyWeight: prePregnancyWeight ?? 52,
+        allergies: allergies ?? 'Không ghi nhận dị ứng thuốc',
+        medicalHistory: medicalHistory ?? 'Bình thường, không bệnh mạn tính',
+      );
+
+      selectPatient(newPatient);
+      _isLoading = false;
+      notifyListeners();
+      return newPatient;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Lỗi tạo hồ sơ bệnh nhân: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Search patient by phone and select if found
+  Future<PatientModel?> searchAndSelectPatient(String phoneToSearch) async {
+    final cleanPhone = phoneToSearch.trim();
+    if (cleanPhone.isEmpty) return null;
+
+    try {
+      final found = await _patientService.searchPatientByPhone(cleanPhone);
+      if (found != null) {
+        selectPatient(found);
+      }
+      return found;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void setIsFollowUp(bool val) {
     _isFollowUp = val;
     notifyListeners();
@@ -449,7 +548,11 @@ class BookingProvider extends ChangeNotifier {
           } catch (_) {
             _pendingFollowUpOrders = [];
           }
+        } else {
+          clearSelectedPatient();
         }
+      } else {
+        clearSelectedPatient();
       }
 
       // 2. Fetch live services from BE
@@ -548,13 +651,18 @@ class BookingProvider extends ChangeNotifier {
 
     try {
       // 1. Find or create patient with entered phone & full name
-      PatientModel? currentPatient = await _patientService.searchPatientByPhone(_phone.trim());
+      PatientModel? currentPatient = _patient;
+      if (currentPatient == null || currentPatient.phone.trim() != _phone.trim()) {
+        currentPatient = await _patientService.searchPatientByPhone(_phone.trim());
+      }
+
       if (currentPatient == null) {
         currentPatient = await _patientService.createPatient(
           fullName: _fullName.trim(),
           phone: _phone.trim(),
           gender: 'Female',
           dob: _dob != null ? DateFormat('yyyy-MM-dd').format(_dob!) : null,
+          nationalId: _nationalId,
           address: _address,
         );
       } else if (_fullName.trim().isNotEmpty && currentPatient.fullName != _fullName.trim()) {
@@ -622,6 +730,8 @@ class BookingProvider extends ChangeNotifier {
     _previousDiagnosis = null;
     _followUpAdvice = null;
     _recommendedFollowUpDate = null;
+    _patient = null;
+    _pendingFollowUpOrders = [];
     _fullName = '';
     _phone = '';
     _dob = null;
@@ -636,6 +746,12 @@ class BookingProvider extends ChangeNotifier {
     _gynVisitReason = null;
     _clinicalNotes = null;
     notifyListeners();
+  }
+
+  /// Clears patient session and resets all booking form states on logout
+  void logout() {
+    clearSelectedPatient();
+    resetBooking();
   }
 }
 

@@ -80,4 +80,13 @@ class HistoryProvider extends ChangeNotifier {
   void retry(String? patientId, {String? phone, String? patientName}) {
     loadAppointments(patientId, phone: phone, patientName: patientName);
   }
+
+  void logout() {
+    _appointments = [];
+    _medicalRecords = [];
+    _isLoading = false;
+    _isRefreshing = false;
+    _errorMessage = null;
+    notifyListeners();
+  }
 }
