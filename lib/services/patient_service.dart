@@ -28,17 +28,33 @@ class PatientService {
     required String phone,
     String? dob,
     String? gender,
+    String? nationalId,
     String? address,
+    String? bloodGroup,
+    String? rhFactor,
+    num? heightCm,
+    num? prePregnancyWeight,
+    String? allergies,
+    String? medicalHistory,
   }) async {
+    final Map<String, dynamic> body = {
+      'fullName': fullName,
+      'phone': phone,
+      if (dob != null) 'dob': dob,
+      'gender': gender ?? 'Female',
+      if (nationalId != null && nationalId.isNotEmpty) 'nationalId': nationalId,
+      if (address != null && address.isNotEmpty) 'address': address,
+      'bloodGroup': bloodGroup ?? 'O',
+      'rhFactor': rhFactor ?? 'Rh+',
+      'heightCm': heightCm ?? 162,
+      'prePregnancyWeight': prePregnancyWeight ?? 52,
+      'allergies': allergies ?? 'Không ghi nhận dị ứng thuốc',
+      'medicalHistory': medicalHistory ?? 'Bình thường, không bệnh mạn tính',
+    };
+
     final response = await _apiClient.post<PatientModel>(
       ApiEndpoints.patients,
-      body: {
-        'fullName': fullName,
-        'phone': phone,
-        'dob': ?dob,
-        'gender': ?gender,
-        'address': ?address,
-      },
+      body: body,
       fromJsonT: (json) => PatientModel.fromJson(json as Map<String, dynamic>),
     );
 

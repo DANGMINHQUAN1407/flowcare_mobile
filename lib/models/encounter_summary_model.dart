@@ -65,6 +65,9 @@ class EncounterSummaryModel {
   final String? queueStatus;
   final DateTime? checkInTime;
   final List<PreExamOrderModel> preExamOrders;
+  final String? roomName;
+  final String? doctorName;
+  final String? ticketCode;
 
   const EncounterSummaryModel({
     required this.encounterId,
@@ -79,6 +82,9 @@ class EncounterSummaryModel {
     this.queueStatus,
     this.checkInTime,
     this.preExamOrders = const [],
+    this.roomName,
+    this.doctorName,
+    this.ticketCode,
   });
 
   factory EncounterSummaryModel.fromJson(Map<String, dynamic> json) {
@@ -112,6 +118,9 @@ class EncounterSummaryModel {
           ? DateTime.tryParse(json['checkInTime'].toString())
           : null,
       preExamOrders: orders,
+      roomName: json['roomName']?.toString(),
+      doctorName: json['doctorName']?.toString(),
+      ticketCode: json['ticketCode']?.toString(),
     );
   }
 
@@ -129,6 +138,9 @@ class EncounterSummaryModel {
       'queueStatus': queueStatus,
       'checkInTime': checkInTime?.toIso8601String(),
       'preExamOrders': preExamOrders.map((o) => o.toJson()).toList(),
+      'roomName': roomName,
+      'doctorName': doctorName,
+      'ticketCode': ticketCode,
     };
   }
 }

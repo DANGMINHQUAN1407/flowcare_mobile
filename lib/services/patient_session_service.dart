@@ -1,5 +1,5 @@
 class PatientSessionService {
-  static const String defaultDemoPhone = '0977112233';
+  static const String defaultDemoPhone = '0938668899';
 
   String _currentPhone = defaultDemoPhone;
   String? _patientId;
