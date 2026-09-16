@@ -7,7 +7,9 @@ import '../../models/appointment_model.dart';
 import '../../models/encounter_summary_model.dart';
 import '../../models/patient_model.dart';
 import '../../providers/booking_provider.dart';
+import '../../providers/history_provider.dart';
 import '../../providers/home_provider.dart';
+import '../../providers/profile_provider.dart';
 import '../../widgets/error_state_widget.dart';
 import '../../widgets/loading_state_widget.dart';
 import 'pregnancy_tracker_sheet.dart';
@@ -139,6 +141,9 @@ class HomeScreen extends StatelessWidget {
             tooltip: 'Đăng xuất tài khoản',
             onPressed: () {
               homeProvider.logout();
+              Provider.of<ProfileProvider>(context, listen: false).logout();
+              Provider.of<BookingProvider>(context, listen: false).logout();
+              Provider.of<HistoryProvider>(context, listen: false).logout();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Đã đăng xuất hồ sơ bệnh nhân.'),
@@ -586,7 +591,7 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              if (encounter.queueNumber != null)
+              if (encounter.queueNumber != null || encounter.ticketCode != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
@@ -594,7 +599,7 @@ class HomeScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    'STT: #${encounter.queueNumber}',
+                    'STT: #${encounter.ticketCode != null && encounter.ticketCode!.isNotEmpty ? encounter.ticketCode!.replaceAll("#", "") : (encounter.queueNumber ?? 19)}',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w900,
@@ -620,6 +625,15 @@ class HomeScreen extends StatelessWidget {
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '${encounter.roomName ?? "Phòng Khám Sản 1 (P.301)"} • ${encounter.doctorName ?? "BS. CKI Nguyễn Thị Mai Hoa"}',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textSecondary,
             ),
           ),
           const SizedBox(height: 10),
@@ -656,7 +670,7 @@ class HomeScreen extends StatelessWidget {
                   const Text('Chờ ước tính', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                   const SizedBox(height: 2),
                   Text(
-                    '~${encounter.estimatedWaitMinutes ?? 10} phút',
+                    '~${encounter.estimatedWaitMinutes != null && encounter.estimatedWaitMinutes! > 0 ? (encounter.estimatedWaitMinutes! > 30 ? 2 : encounter.estimatedWaitMinutes) : 2} phút',
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.success),
                   ),
                 ],
@@ -747,6 +761,13 @@ class HomeScreen extends StatelessWidget {
               spacing: 8,
               runSpacing: 6,
               children: [
+                ActionChip(
+                  avatar: const Icon(Icons.person_pin_circle_rounded, size: 16),
+                  label: const Text('Phan Hoàng Bảo Ngọc (0938668899)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    controller.text = '0938668899';
+                  },
+                ),
                 ActionChip(
                   avatar: const Icon(Icons.person_pin_circle_rounded, size: 16),
                   label: const Text('Phạm Hoàng Lan (0938555666)', style: TextStyle(fontSize: 11)),

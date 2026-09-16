@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/patient_model.dart';
+import '../../providers/booking_provider.dart';
+import '../../providers/history_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/profile_provider.dart';
 
@@ -654,6 +656,8 @@ class ProfileScreen extends StatelessWidget {
               Navigator.pop(dialogCtx);
               homeProvider.logout();
               profileProvider.logout();
+              Provider.of<BookingProvider>(context, listen: false).logout();
+              Provider.of<HistoryProvider>(context, listen: false).logout();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Đã đăng xuất hồ sơ bệnh nhân thành công.'),

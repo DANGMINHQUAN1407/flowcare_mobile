@@ -27,7 +27,6 @@ class _BookingScreenState extends State<BookingScreen> {
   final TextEditingController _nationalIdCtrl = TextEditingController();
   final TextEditingController _addressCtrl = TextEditingController();
   final TextEditingController _notesCtrl = TextEditingController();
-  bool _showExtraPatientInfo = false;
   bool _isSpecialtyContextExpanded = false;
   int _currentStep = 0; // 0: Dịch vụ & Người khám | 1: Ngày & Giờ khám | 2: Xác nhận & Đặt lịch
 
@@ -894,164 +893,851 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   Widget _buildPatientInfoInputSection(BookingProvider bookingProvider) {
-    final dobStr = bookingProvider.dob != null ? DateFormat('dd/MM/yyyy').format(bookingProvider.dob!) : null;
+    // Clear controllers if patient session was logged out or cleared
+    if (bookingProvider.patient == null && bookingProvider.phone.isEmpty) {
+      if (_fullNameCtrl.text.isNotEmpty || _phoneCtrl.text.isNotEmpty) {
+        _fullNameCtrl.clear();
+        _phoneCtrl.clear();
+        _nationalIdCtrl.clear();
+        _addressCtrl.clear();
+        _notesCtrl.clear();
+      }
+    }
+
+    final hasPatient = bookingProvider.patient != null || 
+        (_fullNameCtrl.text.trim().isNotEmpty && _phoneCtrl.text.trim().length >= 10);
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: hasPatient ? AppColors.primary.withValues(alpha: 0.3) : AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: hasPatient ? AppColors.primary.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
+      child: hasPatient
+          ? _buildSelectedPatientCard(bookingProvider)
+          : _buildEmptyPatientCard(bookingProvider),
+    );
+  }
+
+  /// Card hiển thị khi ĐÃ CÓ / ĐÃ CHỌN hồ sơ bệnh nhân
+  Widget _buildSelectedPatientCard(BookingProvider bookingProvider) {
+    final patient = bookingProvider.patient;
+    final displayName = patient?.fullName ?? bookingProvider.fullName;
+    final displayPhone = patient?.phone ?? bookingProvider.phone;
+    final displayDob = patient?.dob ?? 
+        (bookingProvider.dob != null ? DateFormat('dd/MM/yyyy').format(bookingProvider.dob!) : null);
+    final displayNationalId = patient?.nationalId ?? bookingProvider.nationalId;
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Họ và tên field
-          TextFormField(
-            controller: _fullNameCtrl,
-            decoration: InputDecoration(
-              labelText: 'Họ và tên bệnh nhân *',
-              hintText: 'Nhập họ và tên đầy đủ',
-              prefixIcon: const Icon(Icons.person_outline_rounded, size: 20, color: AppColors.primary),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            ),
-            onChanged: (val) => bookingProvider.setFullName(val),
+          // Header: Avatar & Verified Badge
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.primary, Color(0xFF0077C8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.person_rounded, color: Colors.white, size: 28),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            displayName.isNotEmpty ? displayName : 'Bệnh nhân',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE6F4EA),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF34A853).withValues(alpha: 0.3)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_rounded, size: 11, color: Color(0xFF1E7E34)),
+                              SizedBox(width: 3),
+                              Text(
+                                'Hồ sơ hợp lệ',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1E7E34),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        const Icon(Icons.phone_android_rounded, size: 14, color: AppColors.primary),
+                        const SizedBox(width: 4),
+                        Text(
+                          displayPhone,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        if (patient?.id != null) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            '• ID: ${patient!.id.substring(0, 8).toUpperCase()}',
+                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontFamily: 'monospace'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
 
-          // Số điện thoại field
-          TextFormField(
-            controller: _phoneCtrl,
-            keyboardType: TextInputType.phone,
-            decoration: InputDecoration(
-              labelText: 'Số điện thoại liên hệ *',
-              hintText: 'VD: 0912345678',
-              prefixIcon: const Icon(Icons.phone_android_rounded, size: 20, color: AppColors.primary),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            ),
-            onChanged: (val) => bookingProvider.setPhone(val),
-          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
           const SizedBox(height: 12),
 
-          // Nút toggle mở rộng thông tin hành chính
-          InkWell(
-            onTap: () => setState(() => _showExtraPatientInfo = !_showExtraPatientInfo),
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Icon(
-                    _showExtraPatientInfo ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                    color: AppColors.primary,
-                    size: 20,
+          // Chips thông tin chi tiết
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              if (displayDob != null)
+                _buildInfoBadge(Icons.cake_outlined, 'Ngày sinh: $displayDob'),
+              _buildInfoBadge(Icons.female_rounded, 'Giới tính: ${patient?.gender ?? "Nữ"}'),
+              if (displayNationalId != null && displayNationalId.isNotEmpty)
+                _buildInfoBadge(Icons.badge_outlined, 'CCCD: $displayNationalId'),
+              if (patient?.bloodGroup != null)
+                _buildInfoBadge(Icons.bloodtype_outlined, 'Nhóm máu: ${patient!.bloodGroup}'),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // Action Buttons: Đổi hồ sơ / Tạo hồ sơ mới
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _showSearchPatientDialog(context, bookingProvider),
+                  icon: const Icon(Icons.search_rounded, size: 16),
+                  label: const Text('Tra cứu SĐT khác', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _showExtraPatientInfo ? 'Thu gọn thông tin hành chính' : 'Bổ sung CCCD, Ngày sinh, Địa chỉ (Tùy chọn)',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
-                    ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _showCreatePatientBottomSheet(context, bookingProvider),
+                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+                  label: const Text('Tạo hồ sơ mới', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF0F7FF),
+                    foregroundColor: AppColors.primary,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
-                ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Card hiển thị khi CHƯA CÓ hồ sơ bệnh nhân
+  Widget _buildEmptyPatientCard(BookingProvider bookingProvider) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.badge_outlined,
+              size: 28,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Chưa có hồ sơ người khám bệnh',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Vui lòng tạo hồ sơ bệnh nhân để đặt lịch khám và nhận mã phiếu khám điện tử.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Nút tạo hồ sơ mới
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: ElevatedButton.icon(
+              onPressed: () => _showCreatePatientBottomSheet(context, bookingProvider),
+              icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+              label: const Text(
+                'Tạo hồ sơ bệnh nhân mới',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                elevation: 1,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ),
+          const SizedBox(height: 10),
 
-          if (_showExtraPatientInfo) ...[
-            const Divider(height: 20),
-
-            // CCCD / Định danh
-            TextFormField(
-              controller: _nationalIdCtrl,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Số CCCD / CMND / Định danh',
-                hintText: 'VD: 079198001234',
-                prefixIcon: const Icon(Icons.badge_outlined, size: 20, color: AppColors.primary),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              ),
-              onChanged: (val) => bookingProvider.setNationalId(val),
+          // Nút tra cứu nhanh theo SĐT
+          TextButton.icon(
+            onPressed: () => _showSearchPatientDialog(context, bookingProvider),
+            icon: const Icon(Icons.search_rounded, size: 16),
+            label: const Text(
+              'Đã từng khám? Nhập số điện thoại để tìm hồ sơ',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 12),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-            // Ngày sinh DatePicker
-            InkWell(
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: bookingProvider.dob ?? DateTime(1995, 1, 1),
-                  firstDate: DateTime(1940),
-                  lastDate: DateTime.now(),
-                  helpText: 'Chọn ngày sinh của bệnh nhân',
-                );
-                if (picked != null) {
-                  bookingProvider.setDob(picked);
-                }
-              },
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade400),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
+  Widget _buildInfoBadge(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: AppColors.textSecondary),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// BottomSheet tạo mới hồ sơ bệnh nhân
+  void _showCreatePatientBottomSheet(BuildContext context, BookingProvider bookingProvider) {
+    final nameCtrl = TextEditingController(text: bookingProvider.fullName);
+    final phoneCtrl = TextEditingController(text: bookingProvider.phone);
+    final idCtrl = TextEditingController(text: bookingProvider.nationalId ?? '');
+    final addrCtrl = TextEditingController(text: bookingProvider.address ?? '');
+    String selectedBloodGroup = 'O';
+    String selectedRhFactor = 'Rh+';
+    final heightCtrl = TextEditingController(text: '162');
+    final weightCtrl = TextEditingController(text: '52');
+    final allergiesCtrl = TextEditingController(text: 'Không ghi nhận dị ứng thuốc');
+    final medicalHistoryCtrl = TextEditingController(text: 'Bình thường, không bệnh mạn tính');
+    DateTime? selectedDob = bookingProvider.dob;
+    String selectedGender = 'Female';
+    bool isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bottomSheetContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final dobDisplay = selectedDob != null 
+                ? DateFormat('dd/MM/yyyy').format(selectedDob!) 
+                : null;
+
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(bottomSheetContext).viewInsets.bottom + 24,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.cake_outlined, size: 20, color: AppColors.primary),
-                    const SizedBox(width: 12),
-                    Expanded(
+                    // Handle Bar
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Title
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryLight,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.person_add_rounded, color: AppColors.primary, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Tạo hồ sơ bệnh nhân',
+                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                              ),
+                              Text(
+                                'Khai báo thông tin người đi khám để lưu vào hệ thống',
+                                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => Navigator.pop(bottomSheetContext),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Họ và tên
+                    TextFormField(
+                      controller: nameCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: InputDecoration(
+                        labelText: 'Họ và tên bệnh nhân *',
+                        hintText: 'VD: Nguyễn Thị Mai',
+                        prefixIcon: const Icon(Icons.person_outline_rounded, size: 20, color: AppColors.primary),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Số điện thoại
+                    TextFormField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        labelText: 'Số điện thoại liên hệ *',
+                        hintText: 'VD: 0912345678',
+                        prefixIcon: const Icon(Icons.phone_android_rounded, size: 20, color: AppColors.primary),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Ngày sinh & Giới tính
+                    Row(
+                      children: [
+                        // Ngày sinh
+                        Expanded(
+                          flex: 3,
+                          child: InkWell(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: selectedDob ?? DateTime(1995, 1, 1),
+                                firstDate: DateTime(1940),
+                                lastDate: DateTime.now(),
+                                helpText: 'Chọn ngày sinh',
+                              );
+                              if (picked != null) {
+                                setModalState(() => selectedDob = picked);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.shade400),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.cake_outlined, size: 18, color: AppColors.primary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      dobDisplay ?? 'Ngày sinh',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: dobDisplay != null ? FontWeight.w600 : FontWeight.normal,
+                                        color: dobDisplay != null ? AppColors.textPrimary : AppColors.textTertiary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+
+                        // Giới tính
+                        Expanded(
+                          flex: 2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade400),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: selectedGender,
+                                isExpanded: true,
+                                icon: const Icon(Icons.arrow_drop_down, color: AppColors.primary),
+                                items: const [
+                                  DropdownMenuItem(value: 'Female', child: Text('Nữ', style: TextStyle(fontSize: 13))),
+                                  DropdownMenuItem(value: 'Male', child: Text('Nam', style: TextStyle(fontSize: 13))),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    setModalState(() => selectedGender = val);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Số CCCD
+                    TextFormField(
+                      controller: idCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Số CCCD / CMND / Định danh',
+                        hintText: 'VD: 079198001234',
+                        prefixIcon: const Icon(Icons.badge_outlined, size: 20, color: AppColors.primary),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Địa chỉ
+                    TextFormField(
+                      controller: addrCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Địa chỉ nơi ở',
+                        hintText: 'VD: Phường 5, Quận 3, TP.HCM',
+                        prefixIcon: const Icon(Icons.location_on_outlined, size: 20, color: AppColors.primary),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Thông tin lâm sàng & Nhóm máu (Sản - Phụ khoa)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Ngày sinh', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-                          const SizedBox(height: 2),
-                          Text(
-                            dobStr ?? 'Chạm để chọn ngày sinh',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: dobStr != null ? FontWeight.w600 : FontWeight.normal,
-                              color: dobStr != null ? AppColors.textPrimary : AppColors.textTertiary,
+                          const Row(
+                            children: [
+                              Icon(Icons.health_and_safety_rounded, size: 18, color: AppColors.primary),
+                              SizedBox(width: 6),
+                              Text(
+                                'Dữ liệu lâm sàng & Tiền sử (Đồng bộ CSDL)',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              // Nhóm máu
+                              Expanded(
+                                flex: 3,
+                                child: DropdownButtonFormField<String>(
+                                  value: selectedBloodGroup,
+                                  decoration: InputDecoration(
+                                    labelText: 'Nhóm máu',
+                                    isDense: true,
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  ),
+                                  items: ['O', 'A', 'B', 'AB']
+                                      .map((bg) => DropdownMenuItem(value: bg, child: Text(bg, style: const TextStyle(fontSize: 13))))
+                                      .toList(),
+                                  onChanged: (val) {
+                                    if (val != null) setModalState(() => selectedBloodGroup = val);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Yếu tố Rh
+                              Expanded(
+                                flex: 3,
+                                child: DropdownButtonFormField<String>(
+                                  value: selectedRhFactor,
+                                  decoration: InputDecoration(
+                                    labelText: 'Yếu tố Rh',
+                                    isDense: true,
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  ),
+                                  items: ['Rh+', 'Rh-']
+                                      .map((rh) => DropdownMenuItem(value: rh, child: Text(rh, style: const TextStyle(fontSize: 13))))
+                                      .toList(),
+                                  onChanged: (val) {
+                                    if (val != null) setModalState(() => selectedRhFactor = val);
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              // Chiều cao
+                              Expanded(
+                                child: TextFormField(
+                                  controller: heightCtrl,
+                                  keyboardType: TextInputType.number,
+                                  decoration: InputDecoration(
+                                    labelText: 'Chiều cao (cm)',
+                                    isDense: true,
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Cân nặng
+                              Expanded(
+                                child: TextFormField(
+                                  controller: weightCtrl,
+                                  keyboardType: TextInputType.number,
+                                  decoration: InputDecoration(
+                                    labelText: 'Cân nặng (kg)',
+                                    isDense: true,
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          // Tiền sử dị ứng
+                          TextFormField(
+                            controller: allergiesCtrl,
+                            decoration: InputDecoration(
+                              labelText: 'Dị ứng thuốc / Thức ăn',
+                              isDense: true,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          // Tiền sử bệnh
+                          TextFormField(
+                            controller: medicalHistoryCtrl,
+                            decoration: InputDecoration(
+                              labelText: 'Tiền sử bệnh mạn tính',
+                              isDense: true,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.calendar_month_rounded, size: 18, color: AppColors.textSecondary),
+                    const SizedBox(height: 20),
+
+                    // Submit Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: isSaving
+                            ? null
+                            : () async {
+                                final name = nameCtrl.text.trim();
+                                final phone = phoneCtrl.text.trim();
+
+                                if (name.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Vui lòng nhập họ và tên bệnh nhân!'), backgroundColor: Colors.orange),
+                                  );
+                                  return;
+                                }
+                                if (phone.length < 10) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Số điện thoại không hợp lệ (tối thiểu 10 số)!'), backgroundColor: Colors.orange),
+                                  );
+                                  return;
+                                }
+
+                                setModalState(() => isSaving = true);
+
+                                try {
+                                  final newPatient = await bookingProvider.createAndSelectPatient(
+                                    fullName: name,
+                                    phone: phone,
+                                    dob: selectedDob != null ? DateFormat('yyyy-MM-dd').format(selectedDob!) : null,
+                                    gender: selectedGender,
+                                    nationalId: idCtrl.text.trim(),
+                                    address: addrCtrl.text.trim(),
+                                    bloodGroup: selectedBloodGroup,
+                                    rhFactor: selectedRhFactor,
+                                    heightCm: num.tryParse(heightCtrl.text.trim()) ?? 162,
+                                    prePregnancyWeight: num.tryParse(weightCtrl.text.trim()) ?? 52,
+                                    allergies: allergiesCtrl.text.trim().isNotEmpty ? allergiesCtrl.text.trim() : 'Không ghi nhận dị ứng thuốc',
+                                    medicalHistory: medicalHistoryCtrl.text.trim().isNotEmpty ? medicalHistoryCtrl.text.trim() : 'Bình thường, không bệnh mạn tính',
+                                  );
+
+                                  _fullNameCtrl.text = newPatient.fullName;
+                                  _phoneCtrl.text = newPatient.phone;
+                                  if (newPatient.nationalId != null) _nationalIdCtrl.text = newPatient.nationalId!;
+                                  if (newPatient.address != null) _addressCtrl.text = newPatient.address!;
+
+                                  if (bottomSheetContext.mounted) {
+                                    Navigator.pop(bottomSheetContext);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Đã tạo và chọn hồ sơ bệnh nhân: ${newPatient.fullName}!'),
+                                        backgroundColor: Colors.green,
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                } catch (err) {
+                                  setModalState(() => isSaving = false);
+                                  if (bottomSheetContext.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Không thể tạo hồ sơ: ${err.toString()}'),
+                                        backgroundColor: Colors.red,
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          elevation: 2,
+                        ),
+                        child: isSaving
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              )
+                            : const Text(
+                                'Lưu Hồ Sơ & Tiếp Tục Đặt Lịch',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                              ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
+            );
+          },
+        );
+      },
+    );
+  }
 
-            // Địa chỉ
-            TextFormField(
-              controller: _addressCtrl,
-              decoration: InputDecoration(
-                labelText: 'Địa chỉ thường trú / tạm trú',
-                hintText: 'VD: Quận 1, TP. Hồ Chí Minh',
-                prefixIcon: const Icon(Icons.location_on_outlined, size: 20, color: AppColors.primary),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+  /// Dialog tra cứu hồ sơ cũ theo số điện thoại
+  void _showSearchPatientDialog(BuildContext context, BookingProvider bookingProvider) {
+    final searchCtrl = TextEditingController(text: bookingProvider.phone);
+    bool isSearching = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Row(
+                children: [
+                  Icon(Icons.search_rounded, color: AppColors.primary),
+                  SizedBox(width: 8),
+                  Text('Tìm hồ sơ theo SĐT', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                ],
               ),
-              onChanged: (val) => bookingProvider.setAddress(val),
-            ),
-          ],
-        ],
-      ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Nhập số điện thoại đã từng đăng ký khám tại bệnh viện:',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchCtrl,
+                    keyboardType: TextInputType.phone,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'VD: 0912345678',
+                      prefixIcon: const Icon(Icons.phone_android_rounded, size: 20),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Hủy', style: TextStyle(color: AppColors.textSecondary)),
+                ),
+                ElevatedButton(
+                  onPressed: isSearching
+                      ? null
+                      : () async {
+                          final phone = searchCtrl.text.trim();
+                          if (phone.isEmpty) return;
+
+                          setDialogState(() => isSearching = true);
+                          final found = await bookingProvider.searchAndSelectPatient(phone);
+                          setDialogState(() => isSearching = false);
+
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+
+                          if (!context.mounted) return;
+
+                          if (found != null) {
+                            _fullNameCtrl.text = found.fullName;
+                            _phoneCtrl.text = found.phone;
+                            if (found.nationalId != null) _nationalIdCtrl.text = found.nationalId!;
+                            if (found.address != null) _addressCtrl.text = found.address!;
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Đã liên kết hồ sơ: ${found.fullName} (${found.phone})!'),
+                                backgroundColor: Colors.green,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Không tìm thấy hồ sơ cho số $phone. Hãy nhấn "Tạo hồ sơ mới"!'),
+                                backgroundColor: Colors.orange,
+                                behavior: SnackBarBehavior.floating,
+                                action: SnackBarAction(
+                                  label: 'Tạo mới',
+                                  textColor: Colors.white,
+                                  onPressed: () => _showCreatePatientBottomSheet(context, bookingProvider),
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: isSearching
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Tra cứu'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
