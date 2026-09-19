@@ -26,4 +26,23 @@ class EncounterService {
       return null;
     }
   }
+
+  /// Gets the active encounter summary for a patient
+  /// BE Endpoint: GET /api/v1/encounters/patient/{patientId}/active
+  Future<EncounterSummaryModel?> getActiveEncounterByPatient(String patientId) async {
+    if (patientId.isEmpty) return null;
+    try {
+      final response = await _apiClient.get<EncounterSummaryModel?>(
+        ApiEndpoints.activeEncounterByPatient(patientId),
+        fromJsonT: (json) {
+          if (json == null || json is! Map<String, dynamic>) return null;
+          return EncounterSummaryModel.fromJson(json);
+        },
+      );
+
+      return response.data;
+    } catch (_) {
+      return null;
+    }
+  }
 }

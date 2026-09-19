@@ -80,10 +80,17 @@ class BookingProvider extends ChangeNotifier {
   final List<String> _selectedGynSymptoms = [];
   String? _clinicalNotes;
 
+  // Helper getter for minimum valid booking date (from tomorrow onwards)
+  static DateTime get defaultBookingDate {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return today.add(const Duration(days: 1));
+  }
+
   // Services & Slots
   List<ServiceTypeModel> _services = [];
   ServiceTypeModel? _selectedService;
-  DateTime _selectedDate = DateTime.now(); // Default today
+  DateTime _selectedDate = defaultBookingDate; // Default tomorrow
   List<AppointmentSlotModel> _availableSlots = [];
   AppointmentSlotModel? _selectedSlot;
 
@@ -376,10 +383,10 @@ class BookingProvider extends ChangeNotifier {
     _followUpAdvice = order.notes;
     _recommendedFollowUpDate = order.targetDate;
 
-    if (order.targetDate.isAfter(DateTime.now())) {
+    if (!order.targetDate.isBefore(defaultBookingDate)) {
       _selectedDate = order.targetDate;
     } else {
-      _selectedDate = DateTime.now().add(const Duration(days: 1));
+      _selectedDate = defaultBookingDate;
     }
 
     _clinicalNotes = 'Tái khám theo phiếu chỉ định #${order.id.length >= 8 ? order.id.substring(0, 8).toUpperCase() : order.id} của BS. ${order.originalDoctorName}';
@@ -532,23 +539,28 @@ class BookingProvider extends ChangeNotifier {
       final targetPhone = defaultPhone ?? _sessionService.currentPhone;
       if (targetPhone.isNotEmpty) {
         _phone = targetPhone;
-        _patient = await _patientService.searchPatientByPhone(targetPhone);
-        if (_patient != null) {
-          _fullName = _patient!.fullName;
-          _dob = _patient!.dob != null ? DateTime.tryParse(_patient!.dob!) : _dob;
-          _nationalId = _patient!.nationalId ?? _nationalId;
-          _address = _patient!.address ?? _address;
-          if (_patient!.gestationalWeeks != null) {
-            _gestationalWeeks = _patient!.gestationalWeeks;
-          }
+        try {
+          _patient = await _patientService.searchPatientByPhone(targetPhone);
+          if (_patient != null) {
+            _fullName = _patient!.fullName;
+            _dob = _patient!.dob != null ? DateTime.tryParse(_patient!.dob!) : _dob;
+            _nationalId = _patient!.nationalId ?? _nationalId;
+            _address = _patient!.address ?? _address;
+            if (_patient!.gestationalWeeks != null) {
+              _gestationalWeeks = _patient!.gestationalWeeks;
+            }
 
-          // Fetch pending follow-up orders for this patient
-          try {
-            _pendingFollowUpOrders = await _followUpService.getFollowUpOrdersByPatient(_patient!.id);
-          } catch (_) {
-            _pendingFollowUpOrders = [];
+            // Fetch pending follow-up orders for this patient
+            try {
+              _pendingFollowUpOrders = await _followUpService.getFollowUpOrdersByPatient(_patient!.id);
+            } catch (_) {
+              _pendingFollowUpOrders = [];
+            }
+          } else {
+            clearSelectedPatient();
           }
-        } else {
+        } catch (_) {
+          // Bỏ qua nếu chưa có quyền truy cập hoặc 401, cho phép khách vãng lai đặt lịch bình thường
           clearSelectedPatient();
         }
       } else {
@@ -567,7 +579,12 @@ class BookingProvider extends ChangeNotifier {
         _selectedService = _services.first;
       }
 
-      // 3. Load available slots
+      // 3. Ensure valid booking date (from tomorrow onwards)
+      if (_selectedDate.isBefore(defaultBookingDate)) {
+        _selectedDate = defaultBookingDate;
+      }
+
+      // 4. Load available slots
       if (_selectedService != null) {
         await _fetchSlots();
       }
@@ -588,9 +605,14 @@ class BookingProvider extends ChangeNotifier {
     await _fetchSlots();
   }
 
-  /// Selects a booking date
+  /// Selects a booking date (phải từ ngày mai trở đi)
   Future<void> selectDate(DateTime date) async {
     final normalizedDate = DateTime(date.year, date.month, date.day);
+    if (normalizedDate.isBefore(defaultBookingDate)) {
+      // Không cho phép đặt lịch cho ngày hôm nay hoặc trong quá khứ
+      return;
+    }
+
     if (_selectedDate.year == normalizedDate.year &&
         _selectedDate.month == normalizedDate.month &&
         _selectedDate.day == normalizedDate.day) {
@@ -653,7 +675,11 @@ class BookingProvider extends ChangeNotifier {
       // 1. Find or create patient with entered phone & full name
       PatientModel? currentPatient = _patient;
       if (currentPatient == null || currentPatient.phone.trim() != _phone.trim()) {
-        currentPatient = await _patientService.searchPatientByPhone(_phone.trim());
+        try {
+          currentPatient = await _patientService.searchPatientByPhone(_phone.trim());
+        } catch (_) {
+          currentPatient = null;
+        }
       }
 
       if (currentPatient == null) {
@@ -720,6 +746,7 @@ class BookingProvider extends ChangeNotifier {
   /// Resets booking state for a fresh booking session
   void resetBooking() {
     _bookingSuccessResult = null;
+    _selectedDate = defaultBookingDate;
     _selectedSlot = null;
     _hasExistingAppointment = false;
     _existingAppointment = null;

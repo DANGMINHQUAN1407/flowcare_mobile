@@ -112,9 +112,19 @@ class HomeProvider extends ChangeNotifier {
       // 2. Resolve Active Encounter ID:
       // Priority A: Linked from online appointment check
       // Priority B: Stored in session from check-in
-      // Priority C: Check patient follow-up orders (GET /follow-up-orders/patient/{patientId})
-      // Priority D: Check patient appointments list (GET /appointments?patientId=...)
+      // Priority C: Direct active encounter query by patient ID (GET /encounters/patient/{patientId}/active)
+      // Priority D: Check patient follow-up orders (GET /follow-up-orders/patient/{patientId})
       String? activeEncounterId = _appointmentCheck?.activeEncounterId ?? _sessionService.activeEncounterId;
+
+      if ((activeEncounterId == null || activeEncounterId.isEmpty) && _patient != null) {
+        try {
+          final activeSummary = await _encounterService.getActiveEncounterByPatient(_patient!.id);
+          if (activeSummary != null && activeSummary.encounterId.isNotEmpty) {
+            activeEncounterId = activeSummary.encounterId;
+            _encounterSummary = activeSummary;
+          }
+        } catch (_) {}
+      }
 
       if ((activeEncounterId == null || activeEncounterId.isEmpty) && _patient != null) {
         try {
