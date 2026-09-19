@@ -20,6 +20,7 @@ class ApiEndpoints {
   // Encounters & Live Status
   static const String encounters = '/encounters';
   static String encounterStatus(String id) => '/encounters/$id/status';
+  static String activeEncounterByPatient(String patientId) => '/encounters/patient/$patientId/active';
   static String encounterCheckIn(String id) => '/encounters/$id/checkin';
 
   // Queue Tickets

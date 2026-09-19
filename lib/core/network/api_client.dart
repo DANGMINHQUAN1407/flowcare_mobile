@@ -20,9 +20,43 @@ class ApiClient {
         _client = client ?? http.Client(),
         timeout = timeout ?? const Duration(seconds: AppConstants.connectTimeoutSeconds);
 
+  static String? authToken;
+
+  static void setAuthToken(String? token) {
+    authToken = token;
+  }
+
+  /// Tự động lấy Token đăng nhập ngầm từ BE với tài khoản tiếp tân để phục vụ đặt lịch online
+  static Future<void> ensureAuthenticated() async {
+    if (authToken != null && authToken!.trim().isNotEmpty) return;
+    try {
+      final client = http.Client();
+      final uri = Uri.parse('${ApiEndpoints.defaultBaseUrl}/auth/login');
+      final response = await client.post(
+        uri,
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        body: jsonEncode({'userName': 'receptionist.test', 'password': 'FlowCare@2026'}),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map<String, dynamic> && decoded['data'] != null) {
+          final token = decoded['data']['accessToken']?.toString();
+          if (token != null && token.isNotEmpty) {
+            authToken = token;
+          }
+        }
+      }
+    } catch (_) {
+      // Bỏ qua nếu mất kết nối mạng
+    }
+  }
+
   Map<String, String> get _defaultHeaders => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        if (authToken != null && authToken!.trim().isNotEmpty)
+          'Authorization': 'Bearer ${authToken!.trim()}',
       };
 
   Uri _buildUri(String path, [Map<String, dynamic>? queryParameters]) {
@@ -51,10 +85,21 @@ class ApiClient {
     T Function(dynamic json)? fromJsonT,
   }) async {
     try {
+      if (authToken == null || authToken!.isEmpty) {
+        await ensureAuthenticated();
+      }
       final uri = _buildUri(path, queryParameters);
-      final response = await _client
+      var response = await _client
           .get(uri, headers: {..._defaultHeaders, ...?headers})
           .timeout(timeout);
+
+      if (response.statusCode == 401) {
+        authToken = null;
+        await ensureAuthenticated();
+        response = await _client
+            .get(uri, headers: {..._defaultHeaders, ...?headers})
+            .timeout(timeout);
+      }
 
       return _handleResponse<T>(response, fromJsonT);
     } on SocketException {
@@ -75,14 +120,29 @@ class ApiClient {
     T Function(dynamic json)? fromJsonT,
   }) async {
     try {
+      if (authToken == null || authToken!.isEmpty) {
+        await ensureAuthenticated();
+      }
       final uri = _buildUri(path, queryParameters);
-      final response = await _client
+      var response = await _client
           .post(
             uri,
             headers: {..._defaultHeaders, ...?headers},
             body: body != null ? jsonEncode(body) : null,
           )
           .timeout(timeout);
+
+      if (response.statusCode == 401) {
+        authToken = null;
+        await ensureAuthenticated();
+        response = await _client
+            .post(
+              uri,
+              headers: {..._defaultHeaders, ...?headers},
+              body: body != null ? jsonEncode(body) : null,
+            )
+            .timeout(timeout);
+      }
 
       return _handleResponse<T>(response, fromJsonT);
     } on SocketException {
@@ -103,14 +163,29 @@ class ApiClient {
     T Function(dynamic json)? fromJsonT,
   }) async {
     try {
+      if (authToken == null || authToken!.isEmpty) {
+        await ensureAuthenticated();
+      }
       final uri = _buildUri(path, queryParameters);
-      final response = await _client
+      var response = await _client
           .put(
             uri,
             headers: {..._defaultHeaders, ...?headers},
             body: body != null ? jsonEncode(body) : null,
           )
           .timeout(timeout);
+
+      if (response.statusCode == 401) {
+        authToken = null;
+        await ensureAuthenticated();
+        response = await _client
+            .put(
+              uri,
+              headers: {..._defaultHeaders, ...?headers},
+              body: body != null ? jsonEncode(body) : null,
+            )
+            .timeout(timeout);
+      }
 
       return _handleResponse<T>(response, fromJsonT);
     } on SocketException {
@@ -131,14 +206,29 @@ class ApiClient {
     T Function(dynamic json)? fromJsonT,
   }) async {
     try {
+      if (authToken == null || authToken!.isEmpty) {
+        await ensureAuthenticated();
+      }
       final uri = _buildUri(path, queryParameters);
-      final response = await _client
+      var response = await _client
           .patch(
             uri,
             headers: {..._defaultHeaders, ...?headers},
             body: body != null ? jsonEncode(body) : null,
           )
           .timeout(timeout);
+
+      if (response.statusCode == 401) {
+        authToken = null;
+        await ensureAuthenticated();
+        response = await _client
+            .patch(
+              uri,
+              headers: {..._defaultHeaders, ...?headers},
+              body: body != null ? jsonEncode(body) : null,
+            )
+            .timeout(timeout);
+      }
 
       return _handleResponse<T>(response, fromJsonT);
     } on SocketException {
