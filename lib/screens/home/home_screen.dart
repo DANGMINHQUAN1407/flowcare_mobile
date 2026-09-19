@@ -629,7 +629,7 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            '${encounter.roomName ?? "Phòng Khám Sản 1 (P.301)"} • ${encounter.doctorName ?? "BS. CKI Nguyễn Thị Mai Hoa"}',
+            '${encounter.roomName ?? "Phòng Khám Sản 2 (P.302)"} • ${encounter.doctorName ?? "ThS. BS Tran Thi B"}',
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,

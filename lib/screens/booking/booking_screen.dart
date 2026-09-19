@@ -27,7 +27,6 @@ class _BookingScreenState extends State<BookingScreen> {
   final TextEditingController _nationalIdCtrl = TextEditingController();
   final TextEditingController _addressCtrl = TextEditingController();
   final TextEditingController _notesCtrl = TextEditingController();
-  bool _isSpecialtyContextExpanded = false;
   int _currentStep = 0; // 0: Dịch vụ & Người khám | 1: Ngày & Giờ khám | 2: Xác nhận & Đặt lịch
 
   @override
@@ -355,7 +354,7 @@ class _BookingScreenState extends State<BookingScreen> {
         _buildStepHeader(
           stepNumber: '1',
           title: 'Chọn ngày khám',
-          subtitle: 'Lịch khám trong vòng 14 ngày tới',
+          subtitle: 'Đặt hẹn trước tối thiểu 1 ngày (14 ngày tới)',
         ),
         const SizedBox(height: 10),
         _buildDateSelector(context, bookingProvider),
@@ -443,15 +442,11 @@ class _BookingScreenState extends State<BookingScreen> {
         _buildSummaryCard(bookingProvider),
         const SizedBox(height: 14),
 
-        // Ghi chú ngữ cảnh chuyên khoa tự nguyện (Tùy chọn)
+        // Ghi chú cho Bác sĩ (Tùy chọn)
         _buildStepHeader(
           stepNumber: '+',
-          title: bookingProvider.selectedCategory == 'prenatal'
-              ? 'Thông tin thai kỳ (Tùy chọn)'
-              : (bookingProvider.selectedCategory == 'gynecology'
-                  ? 'Thông tin phụ khoa (Tùy chọn)'
-                  : 'Ghi chú triệu chứng (Tùy chọn)'),
-          subtitle: 'Giúp bác sĩ tiếp đón và chuẩn bị lộ trình khám chu đáo hơn',
+          title: 'Ghi chú cho Bác sĩ (Tùy chọn)',
+          subtitle: 'Nhập lý do khám hoặc triệu chứng để Bác sĩ chuẩn bị chu đáo hơn',
         ),
         const SizedBox(height: 10),
         _buildSpecialtyContextSection(context, bookingProvider),
@@ -1194,12 +1189,6 @@ class _BookingScreenState extends State<BookingScreen> {
     final phoneCtrl = TextEditingController(text: bookingProvider.phone);
     final idCtrl = TextEditingController(text: bookingProvider.nationalId ?? '');
     final addrCtrl = TextEditingController(text: bookingProvider.address ?? '');
-    String selectedBloodGroup = 'O';
-    String selectedRhFactor = 'Rh+';
-    final heightCtrl = TextEditingController(text: '162');
-    final weightCtrl = TextEditingController(text: '52');
-    final allergiesCtrl = TextEditingController(text: 'Không ghi nhận dị ứng thuốc');
-    final medicalHistoryCtrl = TextEditingController(text: 'Bình thường, không bệnh mạn tính');
     DateTime? selectedDob = bookingProvider.dob;
     String selectedGender = 'Female';
     bool isSaving = false;
@@ -1390,7 +1379,7 @@ class _BookingScreenState extends State<BookingScreen> {
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         labelText: 'Số CCCD / CMND / Định danh',
-                        hintText: 'VD: 079198001234',
+                        hintText: 'VD: 079198001234 (tùy chọn)',
                         prefixIcon: const Icon(Icons.badge_outlined, size: 20, color: AppColors.primary),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1403,7 +1392,7 @@ class _BookingScreenState extends State<BookingScreen> {
                       controller: addrCtrl,
                       decoration: InputDecoration(
                         labelText: 'Địa chỉ nơi ở',
-                        hintText: 'VD: Phường 5, Quận 3, TP.HCM',
+                        hintText: 'VD: Phường 5, Quận 3, TP.HCM (tùy chọn)',
                         prefixIcon: const Icon(Icons.location_on_outlined, size: 20, color: AppColors.primary),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1411,123 +1400,22 @@ class _BookingScreenState extends State<BookingScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Thông tin lâm sàng & Nhóm máu (Sản - Phụ khoa)
+                    // Ghi chú tiếp đón bệnh viện
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: AppColors.primaryLight.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                        color: const Color(0xFFF0F7FF),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFD0E1FD)),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: const Row(
                         children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.health_and_safety_rounded, size: 18, color: AppColors.primary),
-                              SizedBox(width: 6),
-                              Text(
-                                'Dữ liệu lâm sàng & Tiền sử (Đồng bộ CSDL)',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              // Nhóm máu
-                              Expanded(
-                                flex: 3,
-                                child: DropdownButtonFormField<String>(
-                                  value: selectedBloodGroup,
-                                  decoration: InputDecoration(
-                                    labelText: 'Nhóm máu',
-                                    isDense: true,
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                  ),
-                                  items: ['O', 'A', 'B', 'AB']
-                                      .map((bg) => DropdownMenuItem(value: bg, child: Text(bg, style: const TextStyle(fontSize: 13))))
-                                      .toList(),
-                                  onChanged: (val) {
-                                    if (val != null) setModalState(() => selectedBloodGroup = val);
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Yếu tố Rh
-                              Expanded(
-                                flex: 3,
-                                child: DropdownButtonFormField<String>(
-                                  value: selectedRhFactor,
-                                  decoration: InputDecoration(
-                                    labelText: 'Yếu tố Rh',
-                                    isDense: true,
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                  ),
-                                  items: ['Rh+', 'Rh-']
-                                      .map((rh) => DropdownMenuItem(value: rh, child: Text(rh, style: const TextStyle(fontSize: 13))))
-                                      .toList(),
-                                  onChanged: (val) {
-                                    if (val != null) setModalState(() => selectedRhFactor = val);
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              // Chiều cao
-                              Expanded(
-                                child: TextFormField(
-                                  controller: heightCtrl,
-                                  keyboardType: TextInputType.number,
-                                  decoration: InputDecoration(
-                                    labelText: 'Chiều cao (cm)',
-                                    isDense: true,
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Cân nặng
-                              Expanded(
-                                child: TextFormField(
-                                  controller: weightCtrl,
-                                  keyboardType: TextInputType.number,
-                                  decoration: InputDecoration(
-                                    labelText: 'Cân nặng (kg)',
-                                    isDense: true,
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          // Tiền sử dị ứng
-                          TextFormField(
-                            controller: allergiesCtrl,
-                            decoration: InputDecoration(
-                              labelText: 'Dị ứng thuốc / Thức ăn',
-                              isDense: true,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          // Tiền sử bệnh
-                          TextFormField(
-                            controller: medicalHistoryCtrl,
-                            decoration: InputDecoration(
-                              labelText: 'Tiền sử bệnh mạn tính',
-                              isDense: true,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                          Icon(Icons.info_outline_rounded, size: 18, color: AppColors.primary),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Chỉ số sinh hiệu (huyết áp, cân nặng, chiều cao) sẽ được nhân viên y tế đo trực tiếp khi bạn đến quầy tiếp đón.',
+                              style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.3),
                             ),
                           ),
                         ],
@@ -1567,14 +1455,8 @@ class _BookingScreenState extends State<BookingScreen> {
                                     phone: phone,
                                     dob: selectedDob != null ? DateFormat('yyyy-MM-dd').format(selectedDob!) : null,
                                     gender: selectedGender,
-                                    nationalId: idCtrl.text.trim(),
-                                    address: addrCtrl.text.trim(),
-                                    bloodGroup: selectedBloodGroup,
-                                    rhFactor: selectedRhFactor,
-                                    heightCm: num.tryParse(heightCtrl.text.trim()) ?? 162,
-                                    prePregnancyWeight: num.tryParse(weightCtrl.text.trim()) ?? 52,
-                                    allergies: allergiesCtrl.text.trim().isNotEmpty ? allergiesCtrl.text.trim() : 'Không ghi nhận dị ứng thuốc',
-                                    medicalHistory: medicalHistoryCtrl.text.trim().isNotEmpty ? medicalHistoryCtrl.text.trim() : 'Bình thường, không bệnh mạn tính',
+                                    nationalId: idCtrl.text.trim().isNotEmpty ? idCtrl.text.trim() : null,
+                                    address: addrCtrl.text.trim().isNotEmpty ? addrCtrl.text.trim() : null,
                                   );
 
                                   _fullNameCtrl.text = newPatient.fullName;
@@ -1902,857 +1784,15 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   Widget _buildSpecialtyContextSection(BuildContext context, BookingProvider bookingProvider) {
-    if (bookingProvider.selectedCategory == 'prenatal') {
-      return _buildPrenatalContextCard(context, bookingProvider);
-    }
-    if (bookingProvider.selectedCategory == 'gynecology') {
-      return _buildGynecologyContextCard(context, bookingProvider);
-    }
-    return _buildGeneralContextCard(bookingProvider);
-  }
+    final isPrenatal = bookingProvider.selectedCategory == 'prenatal';
+    final isGyn = bookingProvider.selectedCategory == 'gynecology';
 
-  Widget _buildPrenatalContextCard(BuildContext context, BookingProvider bookingProvider) {
-    final weeks = bookingProvider.gestationalWeeks ?? 0;
-    final lmpStr = bookingProvider.lmp != null ? DateFormat('dd/MM/yyyy').format(bookingProvider.lmp!) : 'Chạm để chọn';
-    final eddStr = bookingProvider.edd != null ? DateFormat('dd/MM/yyyy').format(bookingProvider.edd!) : 'Chạm để chọn';
+    final quickSuggestions = isPrenatal
+        ? ['Khám thai định kỳ', 'Đau bụng âm ỉ', 'Nghén nhiều / Mệt mỏi', 'Tái khám theo hẹn']
+        : (isGyn
+            ? ['Khám phụ khoa định kỳ', 'Rối loạn kinh nguyệt', 'Viêm ngứa / Khó chịu', 'Tư vấn sức khỏe']
+            : ['Khám định kỳ', 'Tư vấn sức khỏe', 'Tái khám']);
 
-    // Tam cá nguyệt Badge
-    Widget trimesterBadge;
-    if (weeks <= 13) {
-      trimesterBadge = Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFE0F2FE),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFBAE6FD)),
-        ),
-        child: const FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text('🌱 3 Tháng Đầu (0-13w)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF0369A1))),
-        ),
-      );
-    } else if (weeks <= 27) {
-      trimesterBadge = Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFEF3C7),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFFDE68A)),
-        ),
-        child: const FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text('🌿 3 Tháng Giữa (14-27w)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFFB45309))),
-        ),
-      );
-    } else {
-      trimesterBadge = Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFCE7F3),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFFBCFE8)),
-        ),
-        child: const FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text('🌸 3 Tháng Cuối (28-40w+)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFFBE185D))),
-        ),
-      );
-    }
-
-    final isFetalLossAlarm = bookingProvider.fetalMovementStatus.contains('Không cảm nhận');
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.maternityPink.withValues(alpha: 0.35)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.maternityPink.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header Card with Toggle
-          InkWell(
-            onTap: () => setState(() => _isSpecialtyContextExpanded = !_isSpecialtyContextExpanded),
-            borderRadius: BorderRadius.circular(10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: AppColors.maternityPinkLight,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.pregnant_woman_rounded, color: AppColors.maternityPink, size: 18),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'HỒ SƠ KHÁM THAI',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF9D174D)),
-                      ),
-                      const SizedBox(height: 3),
-                      trimesterBadge,
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _isSpecialtyContextExpanded ? const Color(0xFFFCE7F3) : Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFFBCFE8)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _isSpecialtyContextExpanded ? 'Thu gọn' : 'Chỉnh sửa',
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFFBE185D)),
-                      ),
-                      const SizedBox(width: 2),
-                      Icon(
-                        _isSpecialtyContextExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                        size: 16,
-                        color: const Color(0xFFBE185D),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Collapsed summary preview (gọn nhẹ 1 hàng, không phải cuộn)
-          if (!_isSpecialtyContextExpanded) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFFBCFE8)),
-              ),
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: [
-                  _buildMiniSummaryTag(bookingProvider.pregnancyType.split(' ')[0]),
-                  _buildMiniSummaryTag('${bookingProvider.gestationalWeeks ?? 28} Tuần ${bookingProvider.gestationalDays ?? 0} Ngày'),
-                  _buildMiniSummaryTag('PARA: ${bookingProvider.gravida} ${bookingProvider.para} ${bookingProvider.abortion} ${bookingProvider.living}'),
-                  if (bookingProvider.selectedWarningSigns.isNotEmpty && !bookingProvider.selectedWarningSigns.contains('Không có dấu hiệu bất thường'))
-                    _buildMiniSummaryTag('⚠️ ${bookingProvider.selectedWarningSigns.length} dấu hiệu bất thường', isWarning: true)
-                  else
-                    _buildMiniSummaryTag('Bình thường (Định kỳ)'),
-                ],
-              ),
-            ),
-          ],
-
-          // Full details when expanded
-          if (_isSpecialtyContextExpanded) ...[
-            const SizedBox(height: 14),
-
-            // 1. Loại thai
-            const Text('LOẠI THAI NHI', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              'Đơn thai (1 thai nhi)',
-              'Song thai (2 thai nhi)',
-              'Đa thai (≥ 3)',
-            ].map((type) {
-              final isSel = bookingProvider.pregnancyType == type;
-              return Expanded(
-                child: InkWell(
-                  onTap: () => bookingProvider.setPregnancyType(type),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSel ? AppColors.maternityPinkLight : Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: isSel ? AppColors.maternityPink : AppColors.border),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      type.split(' ')[0],
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
-                        color: isSel ? AppColors.maternityPink : AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 12),
-
-          // 2. Ngày kinh cuối (LMP) & Ngày dự sinh (EDD)
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: bookingProvider.lmp ?? DateTime.now().subtract(const Duration(days: 70)),
-                      firstDate: DateTime.now().subtract(const Duration(days: 300)),
-                      lastDate: DateTime.now(),
-                      helpText: 'Chọn ngày kinh cuối (LMP)',
-                    );
-                    if (picked != null) {
-                      bookingProvider.setLmp(picked);
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: AppColors.border),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('NGÀY KINH CUỐI (LMP)', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
-                        const SizedBox(height: 2),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(lmpStr, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                            const Icon(Icons.calendar_today_rounded, size: 14, color: AppColors.maternityPink),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: bookingProvider.edd ?? DateTime.now().add(const Duration(days: 210)),
-                      firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                      lastDate: DateTime.now().add(const Duration(days: 300)),
-                      helpText: 'Chọn ngày dự sinh (EDD)',
-                    );
-                    if (picked != null) {
-                      bookingProvider.setEdd(picked);
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: AppColors.border),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('NGÀY DỰ SINH (EDD)', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
-                        const SizedBox(height: 2),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(eddStr, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                            const Icon(Icons.calendar_today_rounded, size: 14, color: AppColors.maternityPink),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Tự động tính tuổi thai & ngày dự sinh (EDD = LMP + 280 ngày)',
-            style: TextStyle(fontSize: 10, color: AppColors.maternityPink, fontStyle: FontStyle.italic),
-          ),
-          const SizedBox(height: 12),
-
-          // 3. Tuổi thai hiện tại (Tuần & Ngày)
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Row(
-                    children: [
-                      const Text('Tuổi thai: ', style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
-                      Text(
-                        '${bookingProvider.gestationalWeeks ?? 0} Tuần',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.maternityPink),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${bookingProvider.gestationalDays ?? 0} Ngày',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // 4. Chỉ số sản khoa chuẩn (PARA 4 SỐ)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFDF2F8),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFFBCFE8)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.family_restroom_rounded, size: 15, color: Color(0xFFBE185D)),
-                    const SizedBox(width: 4),
-                    const Expanded(
-                      child: Text(
-                        'CHỈ SỐ SẢN KHOA (PARA):',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF9D174D)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFBE185D),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        'PARA: ${bookingProvider.gravida} ${bookingProvider.para} ${bookingProvider.abortion} ${bookingProvider.living}',
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.white, fontFamily: 'monospace'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-
-                // 4 Ô: G - P - A - L
-                Row(
-                  children: [
-                    _buildParaItem(
-                      label: 'G (Gravida)',
-                      sub: 'Số lần có thai',
-                      value: bookingProvider.gravida,
-                      color: const Color(0xFFBE185D),
-                      onDec: () => bookingProvider.setPara(g: (bookingProvider.gravida > 1 ? bookingProvider.gravida - 1 : 1)),
-                      onInc: () => bookingProvider.setPara(g: bookingProvider.gravida + 1),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildParaItem(
-                      label: 'P (Term)',
-                      sub: 'Sinh đủ tháng',
-                      value: bookingProvider.para,
-                      color: const Color(0xFF1D4ED8),
-                      onDec: () => bookingProvider.setPara(p: (bookingProvider.para > 0 ? bookingProvider.para - 1 : 0)),
-                      onInc: () => bookingProvider.setPara(p: bookingProvider.para + 1),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildParaItem(
-                      label: 'A (Abortion)',
-                      sub: 'Sảy / Hút / Lưu',
-                      value: bookingProvider.abortion,
-                      color: const Color(0xFFB45309),
-                      onDec: () => bookingProvider.setPara(a: (bookingProvider.abortion > 0 ? bookingProvider.abortion - 1 : 0)),
-                      onInc: () => bookingProvider.setPara(a: bookingProvider.abortion + 1),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildParaItem(
-                      label: 'L (Living)',
-                      sub: 'Con hiện sống',
-                      value: bookingProvider.living,
-                      color: const Color(0xFF047857),
-                      onDec: () => bookingProvider.setPara(l: (bookingProvider.living > 0 ? bookingProvider.living - 1 : 0)),
-                      onInc: () => bookingProvider.setPara(l: bookingProvider.living + 1),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // 5. Theo dõi cử động thai máy
-          const Text('THEO DÕI CỬ ĐỘNG THAI MÁY *', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: bookingProvider.fetalMovementStatus,
-                isExpanded: true,
-                items: [
-                  'Thai máy tốt (>= 4 lần/giờ - Bình thường)',
-                  'Thai đạp yếu / giảm cử động',
-                  '🚨 Không cảm nhận thai máy (> 12 giờ - Cảnh báo đỏ)',
-                  'Tuổi thai nhỏ (< 18-20w chưa cảm nhận rõ)',
-                ].map((val) => DropdownMenuItem(value: val, child: Text(val, style: const TextStyle(fontSize: 12)))).toList(),
-                onChanged: (val) {
-                  if (val != null) bookingProvider.setFetalMovementStatus(val);
-                },
-              ),
-            ),
-          ),
-          if (isFetalLossAlarm) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEE2E2),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFFCA5A5)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '🚨 BÁO ĐỘNG SUY THAI CẤP: Không cảm nhận thai máy > 12 giờ. Vui lòng đến viện ngay để được đo tim thai Non-Stress Test (NST)!',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF991B1B)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
-
-          // 6. Lịch tiêm phòng Vắc-xin Uốn ván (VAT)
-          const Text('LỊCH TIÊM PHÒNG VẮC-XIN UỐN VÁN (VAT)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: bookingProvider.vatVaccine,
-                isExpanded: true,
-                items: [
-                  'Đã tiêm VAT 1 (Tuần 20-24)',
-                  'Đã tiêm VAT 2 (Cách VAT1 1 tháng)',
-                  'Chưa tiêm phòng uốn ván',
-                ].map((val) => DropdownMenuItem(value: val, child: Text(val, style: const TextStyle(fontSize: 12)))).toList(),
-                onChanged: (val) {
-                  if (val != null) bookingProvider.setVatVaccine(val);
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // 7. Tiền sử sinh & sảy thai
-          const Text('TIỀN SỬ SINH & SẢY THAI', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              'Con so (Lần đầu mang thai)',
-              'Sinh thường',
-              'Sinh mổ (Vết mổ cũ)',
-              'Sảy thai / Hút thai',
-              'Thai lưu',
-              'Sinh non',
-              'Tiền sản giật lần trước',
-              'Đái tháo đường thai kỳ lần trước',
-            ].map((item) {
-              final isSel = bookingProvider.selectedObstetricHistory.contains(item);
-              return ChoiceChip(
-                label: Text(item),
-                selected: isSel,
-                onSelected: (_) => bookingProvider.toggleObstetricHistory(item),
-                selectedColor: AppColors.maternityPink,
-                labelStyle: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: isSel ? Colors.white : AppColors.textPrimary,
-                ),
-                backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 14),
-
-          // 8. Lý do đến khám thai
-          const Text('LÝ DO ĐẾN KHÁM THAI *', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: bookingProvider.prenatalVisitReason,
-                isExpanded: true,
-                items: [
-                  'Khám thai định kỳ & Siêu âm Thai 4D / Doppler Màu',
-                  'Sàng lọc dị tật trước sinh (Xét nghiệm NIPT / Double Test)',
-                  'Kiểm tra tim thai & Đo Non-Stress Test (NST)',
-                  'Theo dõi tăng huyết áp thai kỳ / Tiền sản giật',
-                  'Đau bụng dưới / Ra dịch nhầy / Ra máu âm đạo',
-                  'Tái khám theo lịch hẹn của Bác sĩ',
-                  'Lý do khác...',
-                ].map((val) => DropdownMenuItem(value: val, child: Text(val, style: const TextStyle(fontSize: 12)))).toList(),
-                onChanged: (val) {
-                  if (val != null) bookingProvider.setPrenatalVisitReason(val);
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // 9. Dấu hiệu bất thường hiện tại (Triage phân luồng tự động)
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFEF2F2),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFFECACA)),
-            ),
-            child: const Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 18),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'LƯU Ý CẤP CỨU: Nếu bạn đang có dấu hiệu nguy kịch (vỡ ối, ra máu ồ ạt, đau bụng dữ dội, co giật), vui lòng KHÔNG ĐẶT LỊCH HẸN mà hãy đến ngay Khoa Cấp Cứu hoặc gọi 115.',
-                    style: TextStyle(fontSize: 10, color: Color(0xFF991B1B), height: 1.35, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'TRIỆU CHỨNG / LÝ DO THĂM KHÁM HIỆN TẠI:',
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              {'name': 'Không có dấu hiệu bất thường (Khám định kỳ)', 'level': 0},
-              {'name': 'Ốm nghén / Mệt mỏi / Buồn nôn', 'level': 0},
-              {'name': 'Đau lưng / Nặng tức bụng dưới nhẹ', 'level': 0},
-              {'name': 'Đau đầu nhẹ / Phù chân nhẹ', 'level': 2},
-              {'name': 'Cần theo dõi huyết áp / đường huyết', 'level': 2},
-              {'name': 'Cử động thai ít hơn bình thường', 'level': 2},
-              {'name': 'Ra dịch nhầy / Ra chút máu báo', 'level': 2},
-              {'name': 'Tái khám theo lịch hẹn bác sĩ', 'level': 0},
-            ].map((item) {
-              final name = item['name'] as String;
-              final level = item['level'] as int;
-              final isSel = bookingProvider.selectedWarningSigns.contains(name);
-
-              Color selBg;
-              if (level == 2) {
-                selBg = Colors.orange.shade700;
-              } else {
-                selBg = const Color(0xFF0077C8);
-              }
-
-              return FilterChip(
-                label: Text(name),
-                selected: isSel,
-                onSelected: (_) => bookingProvider.toggleWarningSign(name),
-                selectedColor: selBg,
-                labelStyle: TextStyle(
-                  fontSize: 10,
-                  fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
-                  color: isSel ? Colors.white : AppColors.textPrimary,
-                ),
-                backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              );
-            }).toList(),
-          ),
-          ], // End of if (_isSpecialtyContextExpanded)
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMiniSummaryTag(String text, {bool isWarning = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: isWarning ? const Color(0xFFFEE2E2) : const Color(0xFFFDF2F8),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: isWarning ? const Color(0xFFFCA5A5) : const Color(0xFFFBCFE8)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: isWarning ? const Color(0xFF991B1B) : const Color(0xFF9D174D),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildParaItem({
-    required String label,
-    required String sub,
-    required int value,
-    required Color color,
-    required VoidCallback onDec,
-    required VoidCallback onInc,
-  }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          children: [
-            Text(
-              label,
-              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: color),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              sub,
-              style: const TextStyle(fontSize: 7.5, color: AppColors.textSecondary),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 3),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                InkWell(
-                  onTap: onDec,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(color: Colors.grey.shade200, shape: BoxShape.circle),
-                    child: const Icon(Icons.remove, size: 10),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: Text(
-                    '$value',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: color),
-                  ),
-                ),
-                InkWell(
-                  onTap: onInc,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(color: Colors.grey.shade200, shape: BoxShape.circle),
-                    child: const Icon(Icons.add, size: 10),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGynecologyContextCard(BuildContext context, BookingProvider bookingProvider) {
-    final commonReasons = [
-      'Khám phụ khoa định kỳ',
-      'Viêm nhiễm / Ngứa rát',
-      'Rối loạn kinh nguyệt',
-      'Đau bụng hạ vị',
-      'Tầm soát ung thư CTC',
-    ];
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.spa_rounded, color: AppColors.primary, size: 20),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Ngữ cảnh khám phụ khoa',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                ),
-              ),
-              if (bookingProvider.hasProfileHealthData)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.successLight,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Text(
-                    '✓ Y tế đã có',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.success),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          const Text('Lý do chính đi khám:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: commonReasons.map((reason) {
-              final isSel = bookingProvider.gynVisitReason == reason;
-              return ChoiceChip(
-                label: Text(reason),
-                selected: isSel,
-                onSelected: (val) {
-                  bookingProvider.setGynVisitReason(val ? reason : null);
-                },
-                selectedColor: AppColors.primaryLight,
-                labelStyle: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: isSel ? AppColors.primary : AppColors.textSecondary,
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 12),
-
-          // Chu kỳ kinh nguyệt
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.border),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Chu kỳ kinh', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-                      const SizedBox(height: 2),
-                      Text(
-                        bookingProvider.menstrualCycle,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: bookingProvider.lastPeriodDate ?? DateTime.now().subtract(const Duration(days: 14)),
-                      firstDate: DateTime.now().subtract(const Duration(days: 90)),
-                      lastDate: DateTime.now(),
-                      helpText: 'Chọn ngày kinh gần nhất',
-                    );
-                    if (picked != null) {
-                      bookingProvider.setLastPeriodDate(picked);
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: AppColors.border),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Ngày kinh gần nhất', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-                        const SizedBox(height: 2),
-                        Text(
-                          bookingProvider.lastPeriodDate != null
-                              ? DateFormat('dd/MM/yyyy').format(bookingProvider.lastPeriodDate!)
-                              : 'Chạm để chọn',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGeneralContextCard(BookingProvider bookingProvider) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -2765,19 +1805,85 @@ class _BookingScreenState extends State<BookingScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Ghi chú triệu chứng hoặc yêu cầu đặc biệt:',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+            'Lý do khám hoặc triệu chứng khó chịu (nếu có):',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
+
+          // Gợi ý nhanh thân thiện cho bệnh nhân
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: quickSuggestions.map((sug) {
+              return ActionChip(
+                label: Text(
+                  sug,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary),
+                ),
+                backgroundColor: AppColors.primaryLight,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                side: BorderSide(color: AppColors.primary.withValues(alpha: 0.2)),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                onPressed: () {
+                  final current = _notesCtrl.text.trim();
+                  if (current.isEmpty) {
+                    _notesCtrl.text = sug;
+                  } else if (!current.contains(sug)) {
+                    _notesCtrl.text = '$current, $sug';
+                  }
+                  bookingProvider.setClinicalNotes(_notesCtrl.text);
+                },
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+
           TextFormField(
             controller: _notesCtrl,
-            maxLines: 2,
+            maxLines: 3,
             decoration: InputDecoration(
-              hintText: 'Nhập ghi chú hoặc tiền sử cần bác sĩ lưu ý...',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              hintText: 'Nhập thêm ghi chú hoặc triệu chứng cần bác sĩ lưu ý...',
+              hintStyle: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: AppColors.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+              ),
               contentPadding: const EdgeInsets.all(12),
             ),
             onChanged: (val) => bookingProvider.setClinicalNotes(val),
+          ),
+          const SizedBox(height: 14),
+
+          // Hướng dẫn y tế chuẩn mực đúng vai trò Bác sĩ chuyên khoa
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0FDF4),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFBBF7D0)),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.health_and_safety_outlined, size: 18, color: Color(0xFF16A34A)),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Các dữ liệu lâm sàng chi tiết (ngày kinh cuối LMP, tuổi thai, chỉ số PARA, tiền sử sản phụ khoa, siêu âm...) sẽ do Bác sĩ chuyên khoa trực tiếp thăm khám và ghi nhận vào hồ sơ bệnh án tại phòng khám.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF15803D),
+                      height: 1.4,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -2787,6 +1893,8 @@ class _BookingScreenState extends State<BookingScreen> {
   Widget _buildDateSelector(BuildContext context, BookingProvider bookingProvider) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    // Bắt đầu từ ngày mai (chỉ cho phép đặt từ ngày mai trở đi)
+    final minDate = today.add(const Duration(days: 1));
     final selectedDate = bookingProvider.selectedDate;
 
     return Column(
@@ -2798,11 +1906,11 @@ class _BookingScreenState extends State<BookingScreen> {
             itemCount: 14,
             separatorBuilder: (_, index) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
-              final date = today.add(Duration(days: index));
+              final date = minDate.add(Duration(days: index));
               final isSelected = selectedDate.year == date.year &&
                   selectedDate.month == date.month &&
                   selectedDate.day == date.day;
-              final isToday = index == 0;
+              final isTomorrow = index == 0;
 
               return InkWell(
                 onTap: () => bookingProvider.selectDate(date),
@@ -2821,7 +1929,7 @@ class _BookingScreenState extends State<BookingScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        isToday ? 'H.nay' : _formatWeekdayShort(date),
+                        isTomorrow ? 'N.mai' : _formatWeekdayShort(date),
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
