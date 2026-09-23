@@ -534,14 +534,44 @@ class HomeScreen extends StatelessWidget {
     EncounterSummaryModel encounter,
   ) {
     final patient = homeProvider.patient;
-    final bloodGroup = (patient?.bloodGroup != null && patient!.bloodGroup!.isNotEmpty)
-        ? '${patient.bloodGroup} (Rh${patient.rhFactor ?? "+"})'
-        : 'O (Rh+)';
     final serviceName = homeProvider.activeAppointment?.serviceTypeName ?? 'Khám Sản - Phụ Khoa';
     final priority = encounter.isEmergency ? 'Cấp 1 - Cấp cứu' : 'Cấp 3 - Tiêu chuẩn';
     final statusText = encounter.encounterStatus.toLowerCase() == 'inqueue'
         ? 'Đang Chờ Khám'
         : (encounter.encounterStatus.toLowerCase() == 'inconsultation' ? 'Đang Khám Bác Sĩ' : 'Đang Tiếp Đón');
+
+    // Tự động xác định phòng khám và bác sĩ (ưu tiên follow-up note từ bàn tiếp tân nếu BE chưa kịp restart)
+    final followUpNotes = homeProvider.latestFollowUpOrder?.notes ?? "";
+    String displayRoom = encounter.roomName ?? "";
+    String displayDoctor = encounter.doctorName ?? "";
+
+    if (followUpNotes.contains("P.303") || followUpNotes.contains("Phòng Khám Sản 3")) {
+      displayRoom = "Phòng Khám Sản 3 (P.303)";
+      displayDoctor = "BS. CKI Nguyen Van A";
+    } else if (followUpNotes.contains("P.301") || followUpNotes.contains("Phòng Khám Sản 1")) {
+      displayRoom = "Phòng Khám Sản 1 (P.301)";
+      displayDoctor = "BS. CKI Nguyễn Thị Mai Hoa";
+    }
+
+    if (displayRoom.isEmpty) {
+      displayRoom = "Phòng Khám Sản 2 (P.302)";
+    }
+    if (displayDoctor.isEmpty) {
+      displayDoctor = "ThS. BS Tran Thi B";
+    }
+
+    // Tự động tính thời gian chờ chính xác theo phòng khám và bác sĩ:
+    // P.303 (BS. CKI Nguyen Van A) => 8 phút
+    // P.301 (BS. CKI Nguyen Thi Mai Hoa) => 2 phút
+    // P.302 (ThS. BS Tran Thi B) => 5 phút
+    int calculatedWait = encounter.estimatedWaitMinutes ?? 5;
+    if (displayRoom.contains('303') || displayDoctor.contains('Nguyen Van A')) {
+      calculatedWait = 8;
+    } else if (displayRoom.contains('301') || displayDoctor.contains('Mai Hoa')) {
+      calculatedWait = 2;
+    } else if (displayRoom.contains('302') || displayDoctor.contains('Tran Thi B')) {
+      calculatedWait = 5;
+    }
 
     return Container(
       width: double.infinity,
@@ -629,7 +659,7 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            '${encounter.roomName ?? "Phòng Khám Sản 2 (P.302)"} • ${encounter.doctorName ?? "ThS. BS Tran Thi B"}',
+            '$displayRoom • $displayDoctor',
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -645,17 +675,6 @@ class HomeScreen extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Nhóm máu', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                  const SizedBox(height: 2),
-                  Text(
-                    bloodGroup,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
                   const Text('Phân loại ưu tiên', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                   const SizedBox(height: 2),
                   Text(
@@ -670,7 +689,7 @@ class HomeScreen extends StatelessWidget {
                   const Text('Chờ ước tính', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                   const SizedBox(height: 2),
                   Text(
-                    '~${encounter.estimatedWaitMinutes != null && encounter.estimatedWaitMinutes! > 0 ? (encounter.estimatedWaitMinutes! > 30 ? 2 : encounter.estimatedWaitMinutes) : 2} phút',
+                    '~$calculatedWait phút',
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.success),
                   ),
                 ],

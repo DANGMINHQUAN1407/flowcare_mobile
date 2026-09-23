@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/appointment_model.dart';
 import '../models/encounter_summary_model.dart';
+import '../models/follow_up_order_model.dart';
 import '../models/patient_model.dart';
 import '../models/queue_ticket_model.dart';
 import '../services/appointment_service.dart';
@@ -42,6 +43,7 @@ class HomeProvider extends ChangeNotifier {
   AppointmentCheckModel? _appointmentCheck;
   EncounterSummaryModel? _encounterSummary;
   QueueTicketModel? _queueTicket;
+  FollowUpOrderModel? _latestFollowUpOrder;
 
   bool get isLoading => _isLoading;
   bool get isRefreshing => _isRefreshing;
@@ -51,6 +53,7 @@ class HomeProvider extends ChangeNotifier {
   AppointmentCheckModel? get appointmentCheck => _appointmentCheck;
   EncounterSummaryModel? get encounterSummary => _encounterSummary;
   QueueTicketModel? get queueTicket => _queueTicket;
+  FollowUpOrderModel? get latestFollowUpOrder => _latestFollowUpOrder;
   String get currentPhone => _sessionService.currentPhone;
 
   bool get hasActiveAppointment => _appointmentCheck?.hasAppointment == true;
@@ -164,6 +167,15 @@ class HomeProvider extends ChangeNotifier {
       } else {
         _encounterSummary = null;
         _queueTicket = null;
+      }
+
+      if (_patient != null) {
+        try {
+          final followUps = await _followUpService.getFollowUpOrdersByPatient(_patient!.id);
+          if (followUps.isNotEmpty) {
+            _latestFollowUpOrder = followUps.first;
+          }
+        } catch (_) {}
       }
 
       _errorMessage = null;

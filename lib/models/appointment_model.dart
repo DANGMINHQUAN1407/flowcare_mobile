@@ -8,6 +8,7 @@ class AppointmentModel {
   final String status;
   final String source;
   final DateTime createdAt;
+  final String? patientPhone;
 
   const AppointmentModel({
     required this.id,
@@ -19,6 +20,7 @@ class AppointmentModel {
     required this.status,
     required this.source,
     required this.createdAt,
+    this.patientPhone,
   });
 
   factory AppointmentModel.fromJson(Map<String, dynamic> json) {
@@ -32,6 +34,7 @@ class AppointmentModel {
       status: json['status']?.toString() ?? 'Pending',
       source: json['source']?.toString() ?? 'Online',
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now(),
+      patientPhone: json['patientPhone']?.toString(),
     );
   }
 
@@ -46,6 +49,7 @@ class AppointmentModel {
       'status': status,
       'source': source,
       'createdAt': createdAt.toIso8601String(),
+      'patientPhone': patientPhone,
     };
   }
 }
