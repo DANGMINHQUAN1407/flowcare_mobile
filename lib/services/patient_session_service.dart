@@ -1,5 +1,8 @@
 class PatientSessionService {
-  static const String defaultDemoPhone = '0938668899';
+  static const String defaultDemoPhone = String.fromEnvironment(
+    'PATIENT_PHONE',
+    defaultValue: '0938668899',
+  );
 
   String _currentPhone = defaultDemoPhone;
   String? _patientId;

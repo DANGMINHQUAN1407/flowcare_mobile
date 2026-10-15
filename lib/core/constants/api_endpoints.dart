@@ -2,7 +2,10 @@ class ApiEndpoints {
   // Base URLs
   // Android Emulator: 10.0.2.2
   // Real Device (Same WiFi): replace with computer IP, e.g. 192.168.1.x
-  static const String defaultBaseUrl = 'http://10.0.2.2:5062/api/v1';
+  static const String defaultBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:5062/api/v1',
+  );
 
   // Appointments
   static const String appointmentSlots = '/appointments/slots';
@@ -21,6 +24,8 @@ class ApiEndpoints {
   static const String encounters = '/encounters';
   static String encounterStatus(String id) => '/encounters/$id/status';
   static String activeEncounterByPatient(String patientId) => '/encounters/patient/$patientId/active';
+  static String encounterHistoryByPatient(String patientId) => '/encounters/patient/$patientId/history';
+  static String paraclinicalPlan(String encounterId) => '/encounters/$encounterId/paraclinical-plan';
   static String encounterCheckIn(String id) => '/encounters/$id/checkin';
 
   // Queue Tickets

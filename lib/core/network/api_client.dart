@@ -27,11 +27,11 @@ class ApiClient {
   }
 
   /// Tự động lấy Token đăng nhập ngầm từ BE với tài khoản tiếp tân để phục vụ đặt lịch online
-  static Future<void> ensureAuthenticated() async {
+  static Future<void> ensureAuthenticated({String? baseUrl}) async {
     if (authToken != null && authToken!.trim().isNotEmpty) return;
+    final client = http.Client();
     try {
-      final client = http.Client();
-      final uri = Uri.parse('${ApiEndpoints.defaultBaseUrl}/auth/login');
+      final uri = Uri.parse('${baseUrl ?? ApiEndpoints.defaultBaseUrl}/auth/login');
       final response = await client.post(
         uri,
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
@@ -49,8 +49,12 @@ class ApiClient {
       }
     } catch (_) {
       // Bỏ qua nếu mất kết nối mạng
+    } finally {
+      client.close();
     }
   }
+
+  void close() => _client.close();
 
   Map<String, String> get _defaultHeaders => {
         'Content-Type': 'application/json',
@@ -86,7 +90,7 @@ class ApiClient {
   }) async {
     try {
       if (authToken == null || authToken!.isEmpty) {
-        await ensureAuthenticated();
+        await ensureAuthenticated(baseUrl: baseUrl);
       }
       final uri = _buildUri(path, queryParameters);
       var response = await _client
@@ -95,7 +99,7 @@ class ApiClient {
 
       if (response.statusCode == 401) {
         authToken = null;
-        await ensureAuthenticated();
+        await ensureAuthenticated(baseUrl: baseUrl);
         response = await _client
             .get(uri, headers: {..._defaultHeaders, ...?headers})
             .timeout(timeout);
@@ -121,7 +125,7 @@ class ApiClient {
   }) async {
     try {
       if (authToken == null || authToken!.isEmpty) {
-        await ensureAuthenticated();
+        await ensureAuthenticated(baseUrl: baseUrl);
       }
       final uri = _buildUri(path, queryParameters);
       var response = await _client
@@ -134,7 +138,7 @@ class ApiClient {
 
       if (response.statusCode == 401) {
         authToken = null;
-        await ensureAuthenticated();
+        await ensureAuthenticated(baseUrl: baseUrl);
         response = await _client
             .post(
               uri,
@@ -164,7 +168,7 @@ class ApiClient {
   }) async {
     try {
       if (authToken == null || authToken!.isEmpty) {
-        await ensureAuthenticated();
+        await ensureAuthenticated(baseUrl: baseUrl);
       }
       final uri = _buildUri(path, queryParameters);
       var response = await _client
@@ -177,7 +181,7 @@ class ApiClient {
 
       if (response.statusCode == 401) {
         authToken = null;
-        await ensureAuthenticated();
+        await ensureAuthenticated(baseUrl: baseUrl);
         response = await _client
             .put(
               uri,
@@ -207,7 +211,7 @@ class ApiClient {
   }) async {
     try {
       if (authToken == null || authToken!.isEmpty) {
-        await ensureAuthenticated();
+        await ensureAuthenticated(baseUrl: baseUrl);
       }
       final uri = _buildUri(path, queryParameters);
       var response = await _client
@@ -220,7 +224,7 @@ class ApiClient {
 
       if (response.statusCode == 401) {
         authToken = null;
-        await ensureAuthenticated();
+        await ensureAuthenticated(baseUrl: baseUrl);
         response = await _client
             .patch(
               uri,
