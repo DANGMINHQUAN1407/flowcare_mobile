@@ -9,10 +9,11 @@ import 'package:flowcare_mobile/screens/main_shell_screen.dart';
 
 void main() {
   Widget buildTestApp({int initialIndex = 0}) {
-    final homeProvider = HomeProvider();
+    final homeProvider = HomeProvider(loadOnCreate: false);
     final bookingProvider = BookingProvider();
     final historyProvider = HistoryProvider();
     final profileProvider = ProfileProvider();
+    addTearDown(homeProvider.dispose);
 
     return MultiProvider(
       providers: [
