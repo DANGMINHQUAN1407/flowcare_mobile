@@ -516,6 +516,16 @@ class _BookingScreenState extends State<BookingScreen> {
                             final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
                             homeProvider.loadHomeData(isRefresh: true);
                             historyProvider.loadAppointments(bookingProvider.patient?.id, isRefresh: true);
+                          } else if (!success && context.mounted) {
+                            final errorMsg = bookingProvider.errorMessage ?? 'Không thể đặt lịch khám. Vui lòng kiểm tra lại!';
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(errorMsg),
+                                backgroundColor: Colors.red.shade700,
+                                behavior: SnackBarBehavior.floating,
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
                           }
                         }
                       : null,
@@ -1477,11 +1487,16 @@ class _BookingScreenState extends State<BookingScreen> {
                                 } catch (err) {
                                   setModalState(() => isSaving = false);
                                   if (bottomSheetContext.mounted) {
+                                    String cleanMsg = err.toString().replaceAll('ApiException: ', '');
+                                    final statusIdx = cleanMsg.lastIndexOf('(Status:');
+                                    if (statusIdx != -1) cleanMsg = cleanMsg.substring(0, statusIdx).trim();
+
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text('Không thể tạo hồ sơ: ${err.toString()}'),
-                                        backgroundColor: Colors.red,
+                                        content: Text(cleanMsg),
+                                        backgroundColor: Colors.red.shade700,
                                         behavior: SnackBarBehavior.floating,
+                                        duration: const Duration(seconds: 4),
                                       ),
                                     );
                                   }

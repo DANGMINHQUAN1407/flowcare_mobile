@@ -59,13 +59,9 @@ class HistoryProvider extends ChangeNotifier {
       list.sort((a, b) => b.scheduledTime.compareTo(a.scheduledTime));
       _appointments = list;
 
-      // Populate clinical medical records
-      _medicalRecords = [
-        MedicalRecordModel.createDemoRecord(
-          patientName: patientName ?? 'Bệnh nhân',
-          phone: phone ?? '0988999888',
-        ),
-      ];
+      // Clinical records must come from an authorized clinical endpoint.
+      // Do not present generated diagnoses or prescriptions as this patient's data.
+      _medicalRecords = [];
 
       _errorMessage = null;
     } catch (e) {

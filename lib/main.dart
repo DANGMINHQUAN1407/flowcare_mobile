@@ -29,7 +29,7 @@ class FlowCareApp extends StatelessWidget {
         title: AppConstants.appName,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
-        home: const MainShellScreen(),
+        home: const MainShellScreen(initialTabIndex: int.fromEnvironment('INITIAL_TAB', defaultValue: 0)),
       ),
     );
   }
