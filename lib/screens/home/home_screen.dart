@@ -12,6 +12,8 @@ import '../../providers/home_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../widgets/error_state_widget.dart';
 import '../../widgets/loading_state_widget.dart';
+import '../../widgets/patient_notifications_sheet.dart';
+import '../../core/utils/hospital_time.dart';
 import 'pregnancy_tracker_sheet.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -154,17 +156,14 @@ class HomeScreen extends StatelessWidget {
             },
           ),
         IconButton(
-          icon: const Icon(Icons.notifications_none_rounded),
+          icon: Badge(
+            isLabelVisible: homeProvider.unreadNoticeCount > 0,
+            label: Text(homeProvider.unreadNoticeCount.toString()),
+            child: const Icon(Icons.notifications_none_rounded),
+          ),
           color: AppColors.textPrimary,
           tooltip: 'Thông báo',
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Tính năng thông báo thời gian thực tự động kết nối hệ thống tiếp đón.'),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          },
+          onPressed: () => showPatientNotifications(context),
         ),
         const SizedBox(width: 6),
       ],
@@ -331,6 +330,40 @@ class HomeScreen extends StatelessWidget {
       return ErrorStateWidget(
         message: homeProvider.errorMessage!,
         onRetry: () => homeProvider.retry(),
+      );
+    }
+
+    if (homeProvider.encounterSummary?.isFinalized == true) {
+      final summary = homeProvider.encounterSummary!;
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppColors.successLight.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.success.withValues(alpha: 0.35)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [
+            Icon(Icons.check_circle_rounded, color: AppColors.success),
+            SizedBox(width: 8),
+            Expanded(child: Text('Đã hoàn tất lượt khám', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.success))),
+          ]),
+          const SizedBox(height: 10),
+          Text(summary.patientName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          if (summary.checkInTime != null)
+            Text('Ngày khám: ${hospitalTime(summary.checkInTime!, pattern: 'dd/MM/yyyy')}'),
+          if (summary.doctorName?.isNotEmpty == true) ...[
+            const SizedBox(height: 6),
+            Text(summary.doctorName!, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(width: double.infinity, child: FilledButton.icon(
+            onPressed: () => onNavigateToTab?.call(2),
+            icon: const Icon(Icons.history_rounded),
+            label: const Text('Xem lộ trình đã hoàn tất'),
+          )),
+        ]),
       );
     }
 
@@ -540,38 +573,18 @@ class HomeScreen extends StatelessWidget {
         ? 'Đang Chờ Khám'
         : (encounter.encounterStatus.toLowerCase() == 'inconsultation' ? 'Đang Khám Bác Sĩ' : 'Đang Tiếp Đón');
 
-    // Tự động xác định phòng khám và bác sĩ (ưu tiên follow-up note từ bàn tiếp tân nếu BE chưa kịp restart)
-    final followUpNotes = homeProvider.latestFollowUpOrder?.notes ?? "";
-    String displayRoom = encounter.roomName ?? "";
-    String displayDoctor = encounter.doctorName ?? "";
-
-    if (followUpNotes.contains("P.303") || followUpNotes.contains("Phòng Khám Sản 3")) {
-      displayRoom = "Phòng Khám Sản 3 (P.303)";
-      displayDoctor = "BS. CKI Nguyen Van A";
-    } else if (followUpNotes.contains("P.301") || followUpNotes.contains("Phòng Khám Sản 1")) {
-      displayRoom = "Phòng Khám Sản 1 (P.301)";
-      displayDoctor = "BS. CKI Nguyễn Thị Mai Hoa";
-    }
-
-    if (displayRoom.isEmpty) {
-      displayRoom = "Phòng Khám Sản 2 (P.302)";
-    }
-    if (displayDoctor.isEmpty) {
-      displayDoctor = "ThS. BS Tran Thi B";
-    }
-
-    // Tự động tính thời gian chờ chính xác theo phòng khám và bác sĩ:
-    // P.303 (BS. CKI Nguyen Van A) => 8 phút
-    // P.301 (BS. CKI Nguyen Thi Mai Hoa) => 2 phút
-    // P.302 (ThS. BS Tran Thi B) => 5 phút
-    int calculatedWait = encounter.estimatedWaitMinutes ?? 5;
-    if (displayRoom.contains('303') || displayDoctor.contains('Nguyen Van A')) {
-      calculatedWait = 8;
-    } else if (displayRoom.contains('301') || displayDoctor.contains('Mai Hoa')) {
-      calculatedWait = 2;
-    } else if (displayRoom.contains('302') || displayDoctor.contains('Tran Thi B')) {
-      calculatedWait = 5;
-    }
+    final displayRoom = encounter.roomName?.trim().isNotEmpty == true
+        ? encounter.roomName!.trim()
+        : 'Chưa có thông tin phòng';
+    final displayDoctor = encounter.doctorName?.trim().isNotEmpty == true
+        ? encounter.doctorName!.trim()
+        : 'Chưa có thông tin bác sĩ';
+    final calculatedWait = encounter.estimatedWaitMinutes;
+    final rawTicket = encounter.queueNumber?.toString()
+        ?? encounter.ticketCode
+            ?.replaceFirst(RegExp(r'^\s*STT\s*#?\s*', caseSensitive: false), '')
+            .replaceAll('#', '')
+            .trim();
 
     return Container(
       width: double.infinity,
@@ -593,35 +606,42 @@ class HomeScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: encounter.isEmergency
-                      ? AppColors.emergencyLight
-                      : (!homeProvider.hasActiveAppointment
-                          ? AppColors.secondaryLight
-                          : AppColors.primaryLight),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  encounter.isEmergency
-                      ? 'CẤP CỨU KHẨN CẤP'
-                      : (!homeProvider.hasActiveAppointment
-                          ? 'TIẾP NHẬN TẠI QUẦY (VÃNG LAI)'
-                          : statusText.toUpperCase()),
-                  style: TextStyle(
-                    color: encounter.isEmergency
-                        ? AppColors.emergency
-                        : (!homeProvider.hasActiveAppointment
-                            ? AppColors.secondary
-                            : AppColors.primary),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: encounter.isEmergency
+                          ? AppColors.emergencyLight
+                          : (!homeProvider.hasActiveAppointment
+                              ? AppColors.secondaryLight
+                              : AppColors.primaryLight),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      encounter.isEmergency
+                          ? 'CẤP CỨU KHẨN CẤP'
+                          : (!homeProvider.hasActiveAppointment
+                              ? 'TIẾP NHẬN TẠI QUẦY (VÃNG LAI)'
+                              : statusText.toUpperCase()),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: encounter.isEmergency
+                            ? AppColors.emergency
+                            : (!homeProvider.hasActiveAppointment
+                                ? AppColors.secondary
+                                : AppColors.primary),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                 ),
               ),
-              const Spacer(),
-              if (encounter.queueNumber != null || encounter.ticketCode != null)
+              const SizedBox(width: 8),
+              if (rawTicket != null && rawTicket.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
@@ -629,7 +649,7 @@ class HomeScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    'STT: #${encounter.ticketCode != null && encounter.ticketCode!.isNotEmpty ? encounter.ticketCode!.replaceAll("#", "") : (encounter.queueNumber ?? 19)}',
+                    'STT: #$rawTicket',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w900,
@@ -689,7 +709,7 @@ class HomeScreen extends StatelessWidget {
                   const Text('Chờ ước tính', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                   const SizedBox(height: 2),
                   Text(
-                    '~$calculatedWait phút',
+                    calculatedWait != null ? '~$calculatedWait phút' : 'Chưa có',
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.success),
                   ),
                 ],

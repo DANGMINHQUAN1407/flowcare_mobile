@@ -23,13 +23,37 @@ class MainShellScreen extends StatefulWidget {
   State<MainShellScreen> createState() => _MainShellScreenState();
 }
 
-class _MainShellScreenState extends State<MainShellScreen> {
+class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingObserver {
   late int _currentIndex;
+  HomeProvider? _homeProvider;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialTabIndex;
+    _homeProvider = context.read<HomeProvider>();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _homeProvider?.startUpdates();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final home = context.read<HomeProvider>();
+    if (state == AppLifecycleState.resumed) {
+      home.startUpdates();
+      home.loadHomeData(isRefresh: true);
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      home.stopUpdates();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _homeProvider?.stopUpdates();
+    super.dispose();
   }
 
   void _onTabSelected(int index) {

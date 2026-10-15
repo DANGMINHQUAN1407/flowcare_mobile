@@ -68,6 +68,7 @@ class EncounterSummaryModel {
   final String? roomName;
   final String? doctorName;
   final String? ticketCode;
+  final String? patientPhone;
 
   const EncounterSummaryModel({
     required this.encounterId,
@@ -85,7 +86,12 @@ class EncounterSummaryModel {
     this.roomName,
     this.doctorName,
     this.ticketCode,
+    this.patientPhone,
   });
+
+  bool get isFinalized => const {'finalized', 'completed'}.contains(encounterStatus.toLowerCase());
+
+  bool get isConsulting => queueStatus?.toLowerCase() == 'inprogress';
 
   factory EncounterSummaryModel.fromJson(Map<String, dynamic> json) {
     var rawOrders = json['preExamOrders'];
@@ -121,6 +127,7 @@ class EncounterSummaryModel {
       roomName: json['roomName']?.toString(),
       doctorName: json['doctorName']?.toString(),
       ticketCode: json['ticketCode']?.toString(),
+      patientPhone: json['patientPhone']?.toString(),
     );
   }
 
@@ -141,6 +148,7 @@ class EncounterSummaryModel {
       'roomName': roomName,
       'doctorName': doctorName,
       'ticketCode': ticketCode,
+      'patientPhone': patientPhone,
     };
   }
 }

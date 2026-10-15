@@ -1,492 +1,508 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_text_styles.dart';
-import '../../models/encounter_summary_model.dart';
+import '../../core/utils/hospital_time.dart';
+import '../../models/patient_journey_model.dart';
 import '../../providers/home_provider.dart';
+import '../../widgets/patient_notifications_sheet.dart';
+import '../../widgets/journey_timing_card.dart';
 
 class RouteScreen extends StatelessWidget {
   const RouteScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Consumer<HomeProvider>(
-      builder: (context, homeProvider, child) {
-        final hasEncounter = homeProvider.hasActiveEncounter;
-        final summary = homeProvider.encounterSummary;
-        final isEmergency = summary?.isEmergency ?? false;
-
-        return Scaffold(
-          backgroundColor: AppColors.background,
-          appBar: AppBar(
-            title: const Text('Lộ trình khám Sản - Phụ khoa'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded),
-                tooltip: 'Cập nhật lộ trình',
-                onPressed: () => homeProvider.loadHomeData(isRefresh: true),
-              ),
-            ],
-          ),
-          body: SafeArea(
-            child: RefreshIndicator(
-              onRefresh: () => homeProvider.loadHomeData(isRefresh: true),
-              color: AppColors.primary,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Status Banner
-                    _buildStatusBanner(summary, hasEncounter, isEmergency),
-
-                    const SizedBox(height: 20),
-
-                    // Pre-exam Orders Section (Nếu có chỉ định cận lâm sàng)
-                    if (hasEncounter && summary!.preExamOrders.isNotEmpty) ...[
-                      _buildPreExamOrdersSection(summary.preExamOrders),
-                      const SizedBox(height: 20),
-                    ],
-
-                    // Dynamic Journey Timeline
-                    Text(
-                      hasEncounter ? 'Hành trình khám trực tiếp của bạn' : 'Quy trình khám Sản - Phụ khoa tiêu chuẩn',
-                      style: AppTextStyles.titleMedium,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      hasEncounter
-                          ? 'Vị trí hiện tại được hệ thống AI tự động cập nhật theo tiến trình khám.'
-                          : 'Lộ trình tối ưu hóa giúp mẹ & bé giảm thiểu di chuyển giữa các tầng.',
-                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                    ),
-                    const SizedBox(height: 14),
-
-                    _buildJourneyTimeline(summary),
-
-                    const SizedBox(height: 24),
-
-                    // AI Routing explanation card
-                    _buildAiRoutingGuideCard(),
-
-                    const SizedBox(height: 30),
-                  ],
-                ),
+  Widget build(BuildContext context) => Consumer<HomeProvider>(
+    builder: (context, home, _) {
+      final journey = home.journey;
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Lộ trình khám Sản - Phụ khoa'),
+          actions: [
+            IconButton(
+              tooltip: 'Thông báo lượt khám',
+              onPressed: () => showPatientNotifications(context),
+              icon: Badge(
+                isLabelVisible: home.unreadNoticeCount > 0,
+                label: Text(home.unreadNoticeCount.toString()),
+                child: const Icon(Icons.notifications_none_rounded),
               ),
             ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildStatusBanner(EncounterSummaryModel? summary, bool hasEncounter, bool isEmergency) {
-    if (!hasEncounter) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.secondaryLight.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.secondary.withValues(alpha: 0.2)),
-        ),
-        child: const Row(
-          children: [
-            Icon(Icons.alt_route_rounded, color: AppColors.secondary, size: 26),
-            SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Trạng thái: Chưa check-in tại viện',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Sau khi tiếp tân check-in, số thứ tự và phòng khám AI sẽ tự động hiển thị tại đây.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
+            IconButton(
+              tooltip: 'Cập nhật lộ trình',
+              onPressed: home.isRefreshing
+                  ? null
+                  : () => home.loadHomeData(isRefresh: true),
+              icon: const Icon(Icons.refresh_rounded),
             ),
           ],
         ),
-      );
-    }
-
-    final deptName = summary?.departmentName ?? 'Khoa Khám Sản - Phụ Khoa';
-    final waitMin = summary?.estimatedWaitMinutes ?? 5;
-    final queueNum = summary?.queueNumber;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isEmergency ? AppColors.emergencyLight : AppColors.primaryLight,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isEmergency ? AppColors.emergency : AppColors.primary, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: (isEmergency ? AppColors.emergency : AppColors.primary).withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isEmergency ? AppColors.emergency : AppColors.primary,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  isEmergency ? '🚨 CẤP CỨU SẢN KHOA' : 'ĐANG ĐƯỢC TIẾP ĐÓN',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
+        body: SafeArea(
+          child: RefreshIndicator(
+            onRefresh: () => home.loadHomeData(isRefresh: true),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (home.visits.isNotEmpty) ...[
+                  _visitSelector(home),
+                  const SizedBox(height: 16),
+                ],
+                if (home.errorMessage != null)
+                  _warning(
+                    home.errorMessage!,
+                    onRetry: () => home.loadHomeData(isRefresh: true),
                   ),
-                ),
-              ),
-              const Spacer(),
-              if (queueNum != null)
-                Text(
-                  'Số thứ tự: #$queueNum',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: isEmergency ? AppColors.emergency : AppColors.primary,
+                if (home.journeyError != null)
+                  _warning(
+                    home.journeyError!,
+                    onRetry: () => home.loadHomeData(isRefresh: true),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Phòng chỉ định: $deptName (Phòng Khám Sản 1 - BS. CKI Nguyễn Thị Mai Hoa)',
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Thời gian chờ ước tính: ~$waitMin phút (AI tự động điều phối)',
-            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPreExamOrdersSection(List<PreExamOrderModel> orders) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.secondary.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.biotech_outlined, color: AppColors.secondary, size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Chỉ định Cận lâm sàng trước khám (Pre-exam)',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Vui lòng thực hiện các dịch vụ cận lâm sàng dưới đây trước khi vào phòng bác sĩ.',
-            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 12),
-          ...orders.map((o) {
-            final isDone = o.status.toLowerCase() == 'completed';
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: isDone ? AppColors.successLight.withValues(alpha: 0.5) : Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isDone ? AppColors.success.withValues(alpha: 0.3) : AppColors.border,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    isDone ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
-                    color: isDone ? AppColors.success : AppColors.secondary,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      o.serviceTypeName,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: isDone ? AppColors.success : AppColors.textPrimary,
-                        decoration: isDone ? TextDecoration.lineThrough : null,
+                if (home.isLoading && journey == null)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 64),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (journey == null)
+                  _emptyState(home)
+                else ...[
+                  _statusBanner(journey),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Icon(
+                        journey.isFinalized
+                            ? Icons.history_rounded
+                            : home.isRealtimeConnected
+                            ? Icons.wifi_rounded
+                            : Icons.sync_rounded,
+                        size: 15,
+                        color: AppColors.textSecondary,
                       ),
+                      Text(
+                        journey.isFinalized
+                            ? 'Lịch sử lượt khám'
+                            : home.isRefreshing
+                            ? 'Đang cập nhật...'
+                            : home.isRealtimeConnected
+                            ? 'Đang đồng bộ trực tiếp'
+                            : 'Tự cập nhật mỗi 20 giây',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      if (home.lastUpdatedAt != null)
+                        Text(
+                          '· ${hospitalTime(home.lastUpdatedAt!, pattern: 'HH:mm:ss')}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (journey.timing != null) ...[
+                    const SizedBox(height: 16),
+                    JourneyTimingSummary(timing: journey.timing!),
+                  ],
+                  const SizedBox(height: 22),
+                  Text(
+                    journey.isFinalized
+                        ? 'Hành trình khám đã hoàn tất'
+                        : 'Hành trình khám của bạn',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isDone ? AppColors.success : Colors.amber.shade100,
-                      borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${journey.resolvedCount}/${journey.steps.length} bước đã xử lý',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
                     ),
-                    child: Text(
-                      isDone ? 'Đã thực hiện' : 'Chờ thực hiện',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: isDone ? Colors.white : Colors.amber.shade900,
-                      ),
+                  ),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: journey.steps.isEmpty
+                          ? 0
+                          : journey.resolvedCount / journey.steps.length,
+                      minHeight: 6,
+                      backgroundColor: AppColors.border,
+                      color: journey.isFinalized
+                          ? AppColors.success
+                          : AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  for (var i = 0; i < journey.steps.length; i++)
+                    _stepTile(
+                      journey.steps[i],
+                      i,
+                      isLast: i == journey.steps.length - 1,
+                      finalized: journey.isFinalized,
+                    ),
+                  if (journey.plan?.isProposed == true)
+                    _warning(
+                      'Lộ trình cận lâm sàng đang chờ nhân viên y tế duyệt. Hãy chờ hướng dẫn trước khi di chuyển.',
+                    ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Tiến trình được cập nhật từ thao tác của bác sĩ và nhân viên tại các phòng khám.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      height: 1.5,
                     ),
                   ),
                 ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildJourneyTimeline(EncounterSummaryModel? summary) {
-    final status = summary?.encounterStatus.toLowerCase() ?? '';
-    final isCheckedIn = status == 'checkedin' || status == 'routed' || status == 'inqueue' || status == 'inconsultation' || status == 'completed';
-    final hasPreExam = summary != null && summary.preExamOrders.isNotEmpty;
-    final isPreExamDone = hasPreExam && summary.preExamOrders.every((o) => o.status.toLowerCase() == 'completed');
-    final isConsulting = status == 'inconsultation';
-    final isCompleted = status == 'completed';
-
-    return Column(
-      children: [
-        _buildTimelineStep(
-          stepNumber: '1',
-          title: 'Tiếp đón & Đo sinh hiệu thai sản',
-          room: 'Quầy tiếp đón & Phòng đo huyết áp (Tầng 1 - Khu A)',
-          status: isCheckedIn ? 'Đã hoàn tất' : 'Chờ check-in',
-          isCompleted: isCheckedIn,
-          isCurrent: !isCheckedIn,
-          icon: Icons.how_to_reg_rounded,
-        ),
-        _buildTimelineStep(
-          stepNumber: '2',
-          title: 'Cận lâm sàng (Siêu âm thai 2D/4D / Xét nghiệm)',
-          room: 'Phòng Siêu âm 104 / Phòng Xét nghiệm 108 (Khu B)',
-          status: !hasPreExam
-              ? 'Không có chỉ định'
-              : (isPreExamDone ? 'Đã hoàn tất' : (isCheckedIn ? 'Đang thực hiện' : 'Chờ tiếp đón')),
-          isCompleted: hasPreExam ? isPreExamDone : isCheckedIn,
-          isCurrent: hasPreExam && isCheckedIn && !isPreExamDone,
-          icon: Icons.biotech_rounded,
-        ),
-        _buildTimelineStep(
-          stepNumber: '3',
-          title: 'Khám chuyên khoa & Tư vấn Sản - Phụ khoa',
-          room: summary?.departmentName != null
-              ? '${summary!.departmentName} • Phòng Khám Sản 1 - P.301 (BS. CKI Nguyễn Thị Mai Hoa)'
-              : 'Phòng Khám Sản 1 - P.301 (BS. CKI Nguyễn Thị Mai Hoa)',
-          status: isCompleted
-              ? 'Đã hoàn tất'
-              : (isConsulting ? 'Đang trong phòng khám' : (isCheckedIn ? 'Đang chờ gọi số' : 'Bước tiếp theo')),
-          isCompleted: isCompleted,
-          isCurrent: isConsulting || (isCheckedIn && (!hasPreExam || isPreExamDone) && !isCompleted),
-          icon: Icons.medical_services_rounded,
-        ),
-        _buildTimelineStep(
-          stepNumber: '4',
-          title: 'Bác sĩ kết luận & Nhận đơn thuốc / Hướng dẫn',
-          room: 'Bàn hướng dẫn & Quầy phát thuốc Bệnh viện Phụ Sản',
-          status: isCompleted ? 'Hoàn tất lượt khám' : 'Bước cuối',
-          isCompleted: isCompleted,
-          isCurrent: false,
-          isLast: true,
-          icon: Icons.task_alt_rounded,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTimelineStep({
-    required String stepNumber,
-    required String title,
-    required String room,
-    required String status,
-    required bool isCompleted,
-    required bool isCurrent,
-    required IconData icon,
-    bool isLast = false,
-  }) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Step indicator & line
-          Column(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: isCompleted
-                      ? AppColors.success
-                      : isCurrent
-                          ? AppColors.primary
-                          : Colors.grey.shade200,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isCompleted
-                        ? AppColors.success
-                        : isCurrent
-                            ? AppColors.primary
-                            : AppColors.border,
-                    width: 2,
-                  ),
-                ),
-                child: Center(
-                  child: isCompleted
-                      ? const Icon(Icons.check_rounded, color: Colors.white, size: 18)
-                      : Icon(
-                          icon,
-                          size: 16,
-                          color: isCurrent ? Colors.white : AppColors.textSecondary,
-                        ),
-                ),
-              ),
-              if (!isLast)
-                Expanded(
-                  child: Container(
-                    width: 2,
-                    color: isCompleted ? AppColors.success.withValues(alpha: 0.5) : AppColors.border,
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          // Content
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 16.0),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isCurrent ? AppColors.primaryLight.withValues(alpha: 0.4) : AppColors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isCurrent ? AppColors.primary : AppColors.border,
-                    width: isCurrent ? 1.5 : 1,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: isCurrent ? AppColors.primary : AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: isCompleted
-                                ? AppColors.successLight
-                                : (isCurrent ? AppColors.primaryLight : AppColors.surfaceVariant),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            status,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: isCompleted
-                                  ? AppColors.success
-                                  : (isCurrent ? AppColors.primary : AppColors.textSecondary),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.room_outlined, size: 13, color: AppColors.textSecondary),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            room,
-                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+                const SizedBox(height: 24),
+              ],
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      );
+    },
+  );
 
-  Widget _buildAiRoutingGuideCard() {
+  Widget _visitSelector(HomeProvider home) {
+    final selected = home.encounterSummary?.encounterId;
+    final exists = home.visits.any((v) => v.encounterId == selected);
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
       ),
-      child: const Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.auto_awesome_rounded,
-            color: AppColors.primary,
-            size: 22,
+          const Text(
+            'Lượt khám',
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
           ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Thuật toán FlowCare AI liên tục tính toán độ dài hàng đợi và ưu tiên thai phụ để đề xuất luồng di chuyển nhanh nhất.',
-              style: TextStyle(
-                fontSize: 11,
+          DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: exists ? selected : null,
+              isExpanded: true,
+              hint: const Text('Chọn lượt khám'),
+              items: home.visits
+                  .map(
+                    (visit) => DropdownMenuItem(
+                      value: visit.encounterId,
+                      child: Text(
+                        '${hospitalTime(visit.visitTime, pattern: 'dd/MM/yyyy')} · ${visit.serviceTypeName}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: home.isLoading
+                  ? null
+                  : (id) {
+                      if (id != null) home.selectVisit(id);
+                    },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusBanner(PatientJourney journey) {
+    final finalized = journey.isFinalized;
+    final current = journey.currentStep;
+    final emergency = journey.summary.isEmergency && !finalized;
+    final accent = finalized
+        ? AppColors.success
+        : emergency
+        ? AppColors.emergency
+        : AppColors.primary;
+    final title = finalized
+        ? 'Đã hoàn tất lượt khám'
+        : emergency
+        ? 'Lượt khám ưu tiên cấp cứu'
+        : current?.statusLabel ?? 'Đang chờ cập nhật tiến trình';
+    final instruction = finalized
+        ? 'Bạn có thể xem lại các bước và phòng đã thực hiện bên dưới.'
+        : emergency
+        ? 'Vui lòng làm theo hướng dẫn trực tiếp của nhân viên y tế.'
+        : current?.title ?? 'Nhân viên y tế sẽ hướng dẫn bước tiếp theo.';
+    return Container(
+      key: const ValueKey('journey-status-banner'),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: accent.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                finalized ? Icons.check_circle_rounded : Icons.route_rounded,
+                color: accent,
+                size: 28,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: accent,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            journey.summary.patientName,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+          if (journey.summary.checkInTime != null) ...[
+            const SizedBox(height: 3),
+            Text(
+              'Lượt khám ngày ${hospitalTime(journey.summary.checkInTime!, pattern: 'dd/MM/yyyy')}',
+              style: const TextStyle(
+                fontSize: 12,
                 color: AppColors.textSecondary,
-                height: 1.4,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Text(instruction, style: const TextStyle(fontSize: 13, height: 1.5)),
+          if (!finalized && current?.location.isNotEmpty == true) ...[
+            const SizedBox(height: 6),
+            Text(
+              current!.location,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: accent,
+              ),
+            ),
+          ],
+          if (!finalized && current?.queueNumber != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Số thứ tự: #${current!.queueNumber}',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: accent,
+              ),
+            ),
+          ],
+          if (!finalized && current?.timing != null) ...[
+            const SizedBox(height: 12),
+            JourneyTravelHighlight(minutes: current!.timing!.travelMinutes),
+            const SizedBox(height: 6),
+            Text(
+              'Chờ trước dịch vụ dự kiến: ${journeyMinutes(current.timing!.waitBeforeServiceMinutes)}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+          if (!finalized &&
+              current?.isService == true &&
+              current?.estimatedStartTime != null &&
+              current!.estimatedStartTime!.isAfter(DateTime.now())) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Dự kiến đến lượt: ${hospitalTime(current.estimatedStartTime!, pattern: 'HH:mm')}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+          if (!finalized &&
+              current?.id == 'consultation' &&
+              journey.summary.queueStatus?.toLowerCase() == 'waiting' &&
+              journey.summary.estimatedWaitMinutes != null &&
+              journey.summary.checkInTime != null &&
+              isSameHospitalDay(
+                journey.summary.checkInTime!,
+                DateTime.now(),
+              )) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Thời gian chờ ước tính: ~${journey.summary.estimatedWaitMinutes} phút',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _stepTile(
+    JourneyStep step,
+    int index, {
+    required bool isLast,
+    required bool finalized,
+  }) {
+    final state = step.state;
+    final color = switch (state) {
+      JourneyStepState.completed => AppColors.success,
+      JourneyStepState.current => AppColors.primary,
+      JourneyStepState.waiting => AppColors.warning,
+      JourneyStepState.skipped => AppColors.textSecondary,
+      JourneyStepState.pending => AppColors.textTertiary,
+    };
+    final icon = switch (state) {
+      JourneyStepState.completed => Icons.check_rounded,
+      JourneyStepState.waiting => Icons.hourglass_bottom_rounded,
+      JourneyStepState.skipped => Icons.skip_next_rounded,
+      _ =>
+        step.isService
+            ? Icons.biotech_rounded
+            : Icons.medical_services_outlined,
+    };
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 34,
+            child: Column(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: color.withValues(alpha: 0.13),
+                  ),
+                  child: Icon(icon, color: color, size: 21),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      color: AppColors.border,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              margin: EdgeInsets.only(bottom: isLast ? 0 : 16),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: state == JourneyStepState.current
+                      ? color
+                      : AppColors.border,
+                  width: state == JourneyStepState.current ? 1.5 : 1,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${index + 1}. ${step.title}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      step.statusLabel,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                  if (step.location.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      step.location,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                  if (step.timing != null) ...[
+                    const SizedBox(height: 12),
+                    JourneyStepTimingCard(timing: step.timing!),
+                  ],
+                  if (step.queueNumber != null && !finalized) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Số thứ tự #${step.queueNumber}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                  if (step.completedAt != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      hospitalTime(step.completedAt!, pattern: 'dd/MM HH:mm'),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                  if (step.instruction?.isNotEmpty == true &&
+                      !finalized &&
+                      state != JourneyStepState.completed) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      step.instruction!,
+                      style: const TextStyle(fontSize: 12, height: 1.5),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
@@ -494,4 +510,52 @@ class RouteScreen extends StatelessWidget {
       ),
     );
   }
+
+  Widget _warning(String message, {VoidCallback? onRetry}) => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: AppColors.warningLight,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(message, style: const TextStyle(fontSize: 12, height: 1.5)),
+        if (onRetry != null)
+          TextButton(onPressed: onRetry, child: const Text('Thử lại')),
+      ],
+    ),
+  );
+
+  Widget _emptyState(HomeProvider home) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 48),
+    child: Column(
+      children: [
+        const Icon(
+          Icons.route_outlined,
+          size: 52,
+          color: AppColors.textTertiary,
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'Chưa có lượt khám để theo dõi',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 10),
+        Text(
+          home.currentPhone.isEmpty
+              ? 'Tra cứu số điện thoại ở Trang chủ để xem lượt khám của bạn.'
+              : 'Lộ trình sẽ hiển thị sau khi bệnh viện tiếp nhận lượt khám.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 13,
+            color: AppColors.textSecondary,
+            height: 1.6,
+          ),
+        ),
+      ],
+    ),
+  );
 }

@@ -11,6 +11,7 @@ import '../../providers/booking_provider.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/error_state_widget.dart';
 import '../../widgets/loading_state_widget.dart';
+import '../../core/utils/hospital_time.dart';
 
 class HistoryScreen extends StatelessWidget {
   final void Function(int tabIndex)? onNavigateToTab;
@@ -134,7 +135,7 @@ class HistoryScreen extends StatelessWidget {
                                               Icon(Icons.verified_rounded, size: 12, color: AppColors.success),
                                               SizedBox(width: 3),
                                               Text(
-                                                'Đã xác thực EMR',
+                                                'Hồ sơ bệnh nhân',
                                                 style: TextStyle(
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.w700,
@@ -211,6 +212,28 @@ class HistoryScreen extends StatelessWidget {
                     ),
 
                     const SizedBox(height: 16),
+
+                    if (homeProvider.visits.isNotEmpty) ...[
+                      const Text('Lượt khám tại bệnh viện', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 10),
+                      ...homeProvider.visits.map((visit) => Card(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          leading: Icon(visit.isFinalized ? Icons.check_circle_outline_rounded : Icons.route_outlined,
+                            color: visit.isFinalized ? AppColors.success : AppColors.primary),
+                          title: Text(visit.serviceTypeName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                          subtitle: Text(hospitalTime(visit.visitTime, pattern: 'dd/MM/yyyy') +
+                            (visit.isFinalized ? ' · Đã hoàn tất' : ' · Đang theo dõi')),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () {
+                            homeProvider.selectVisit(visit.encounterId);
+                            onNavigateToTab?.call(2);
+                          },
+                        ),
+                      )),
+                      const SizedBox(height: 14),
+                    ],
 
                     // Segmented Tab Selector
                     Container(

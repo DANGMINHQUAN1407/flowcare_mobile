@@ -184,10 +184,11 @@ class BookingProvider extends ChangeNotifier {
           (_patient!.allergies != null && _patient!.allergies!.isNotEmpty) ||
           (_patient!.medicalHistory != null && _patient!.medicalHistory!.isNotEmpty));
 
-  /// Can submit booking check
+  /// Can submit booking check - bắt buộc phải đã lưu/chọn hồ sơ bệnh nhân
   bool get canSubmit =>
-      ((_patient != null && _patient!.fullName.isNotEmpty && _patient!.phone.isNotEmpty) ||
-          (_fullName.trim().isNotEmpty && _phone.trim().length >= 10)) &&
+      _patient != null &&
+      _patient!.fullName.trim().isNotEmpty &&
+      _patient!.phone.trim().isNotEmpty &&
       _selectedService != null &&
       _selectedSlot != null &&
       _selectedSlot!.isAvailable &&
@@ -270,8 +271,26 @@ class BookingProvider extends ChangeNotifier {
       notifyListeners();
       return newPatient;
     } catch (e) {
+      final errStr = e.toString();
+      // Auto-fallback: If phone number is already registered in DB, load existing patient profile
+      if (errStr.contains('DUPLICATE_PHONE') || errStr.contains('đã tồn tại') || errStr.contains('already exists')) {
+        try {
+          final existingPatient = await _patientService.searchPatientByPhone(phone.trim());
+          if (existingPatient != null) {
+            selectPatient(existingPatient);
+            _isLoading = false;
+            notifyListeners();
+            return existingPatient;
+          }
+        } catch (_) {}
+      }
+
+      String cleanMsg = errStr.replaceAll('ApiException: ', '');
+      final statusIdx = cleanMsg.lastIndexOf('(Status:');
+      if (statusIdx != -1) cleanMsg = cleanMsg.substring(0, statusIdx).trim();
+
       _isLoading = false;
-      _errorMessage = 'Lỗi tạo hồ sơ bệnh nhân: ${e.toString()}';
+      _errorMessage = cleanMsg;
       notifyListeners();
       rethrow;
     }
@@ -672,41 +691,12 @@ class BookingProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1. Find or create patient with entered phone & full name
-      PatientModel? currentPatient = _patient;
-      if (currentPatient == null || currentPatient.phone.trim() != _phone.trim()) {
-        try {
-          currentPatient = await _patientService.searchPatientByPhone(_phone.trim());
-        } catch (_) {
-          currentPatient = null;
-        }
+      // 1. Kiểm tra bắt buộc phải có hồ sơ đã được người dùng lưu
+      if (_patient == null) {
+        throw Exception('Vui lòng lưu hồ sơ bệnh nhân trước khi đặt lịch khám.');
       }
 
-      if (currentPatient == null) {
-        currentPatient = await _patientService.createPatient(
-          fullName: _fullName.trim(),
-          phone: _phone.trim(),
-          gender: 'Female',
-          dob: _dob != null ? DateFormat('yyyy-MM-dd').format(_dob!) : null,
-          nationalId: _nationalId,
-          address: _address,
-        );
-      } else if (_fullName.trim().isNotEmpty && currentPatient.fullName != _fullName.trim()) {
-        try {
-          currentPatient = await _patientService.updatePatient(
-            id: currentPatient.id,
-            fullName: _fullName.trim(),
-            phone: _phone.trim(),
-            gender: 'Female',
-            dob: _dob != null ? DateFormat('yyyy-MM-dd').format(_dob!) : null,
-            address: _address ?? currentPatient.address,
-          );
-        } catch (_) {}
-      }
-
-      if (currentPatient == null) {
-        throw Exception('Không thể khởi tạo thông tin người bệnh.');
-      }
+      final currentPatient = _patient!;
 
       _patient = currentPatient.copyWith(
         gestationalWeeks: _gestationalWeeks ?? currentPatient.gestationalWeeks,
@@ -736,7 +726,11 @@ class BookingProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'Đặt lịch không thành công: ${e.toString()}';
+      String cleanMsg = e.toString().replaceAll('ApiException: ', '');
+      final statusIdx = cleanMsg.lastIndexOf('(Status:');
+      if (statusIdx != -1) cleanMsg = cleanMsg.substring(0, statusIdx).trim();
+
+      _errorMessage = cleanMsg;
       _isSubmitting = false;
       notifyListeners();
       return false;
