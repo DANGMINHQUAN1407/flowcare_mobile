@@ -146,4 +146,22 @@ void main() {
       '12/10/2026 01:05',
     );
   });
+
+  test(
+    'A service already in progress takes precedence over another queued room',
+    () {
+      final journey = PatientJourney.build(
+        summaryFixture(status: 'InQueue'),
+        planFixture(
+          status: 'Active',
+          steps: [
+            serviceFixture(id: 'queued', status: 'InQueue'),
+            serviceFixture(id: 'in-progress', status: 'InProgress', order: 2),
+          ],
+        ),
+      );
+      expect(journey.currentStep!.id, 'in-progress');
+      expect(journey.currentStep!.isInProgress, isTrue);
+    },
+  );
 }

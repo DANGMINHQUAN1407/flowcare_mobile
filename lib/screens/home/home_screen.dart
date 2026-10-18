@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/appointment_model.dart';
 import '../../models/encounter_summary_model.dart';
 import '../../models/patient_model.dart';
-import '../../providers/booking_provider.dart';
-import '../../providers/history_provider.dart';
 import '../../providers/home_provider.dart';
-import '../../providers/profile_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/booking_provider.dart';
 import '../../widgets/error_state_widget.dart';
 import '../../widgets/loading_state_widget.dart';
 import '../../widgets/patient_notifications_sheet.dart';
@@ -19,10 +19,7 @@ import 'pregnancy_tracker_sheet.dart';
 class HomeScreen extends StatelessWidget {
   final void Function(int tabIndex)? onNavigateToTab;
 
-  const HomeScreen({
-    super.key,
-    this.onNavigateToTab,
-  });
+  const HomeScreen({super.key, this.onNavigateToTab});
 
   @override
   Widget build(BuildContext context) {
@@ -133,26 +130,16 @@ class HomeScreen extends StatelessWidget {
         IconButton(
           icon: const Icon(Icons.confirmation_number_outlined),
           color: AppColors.primary,
-          tooltip: 'Tra cứu phiếu khám / Đổi SĐT',
-          onPressed: () => _showQuickLookupDialog(context, homeProvider),
+          tooltip: 'Làm mới dữ liệu của bạn',
+          onPressed: () => homeProvider.loadHomeData(isRefresh: true),
         ),
-        if (homeProvider.patient != null || homeProvider.currentPhone.isNotEmpty)
+        if (homeProvider.patientId != null)
           IconButton(
             icon: const Icon(Icons.logout_rounded, size: 20),
             color: AppColors.emergency,
             tooltip: 'Đăng xuất tài khoản',
             onPressed: () {
-              homeProvider.logout();
-              Provider.of<ProfileProvider>(context, listen: false).logout();
-              Provider.of<BookingProvider>(context, listen: false).logout();
-              Provider.of<HistoryProvider>(context, listen: false).logout();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Đã đăng xuất hồ sơ bệnh nhân.'),
-                  backgroundColor: AppColors.textPrimary,
-                  duration: Duration(seconds: 2),
-                ),
-              );
+              context.read<AuthProvider>().logout();
             },
           ),
         IconButton(
@@ -203,7 +190,10 @@ class HomeScreen extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
@@ -293,7 +283,7 @@ class HomeScreen extends StatelessWidget {
                 child: SizedBox(
                   height: 42,
                   child: OutlinedButton.icon(
-                    onPressed: () => _showQuickLookupDialog(context, homeProvider),
+                    onPressed: () => homeProvider.loadHomeData(isRefresh: true),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,
                       side: const BorderSide(color: Colors.white, width: 1.5),
@@ -301,9 +291,12 @@ class HomeScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    icon: const Icon(Icons.confirmation_number_outlined, size: 16),
+                    icon: const Icon(
+                      Icons.confirmation_number_outlined,
+                      size: 16,
+                    ),
                     label: const Text(
-                      'Tra cứu SĐT',
+                      'Làm mới',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
@@ -319,14 +312,18 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActiveStatusSection(BuildContext context, HomeProvider homeProvider) {
+  Widget _buildActiveStatusSection(
+    BuildContext context,
+    HomeProvider homeProvider,
+  ) {
     if (homeProvider.isLoading && homeProvider.patient == null) {
       return const LoadingStateWidget(
         message: 'Đang đồng bộ hồ sơ sản phụ khoa...',
       );
     }
 
-    if (homeProvider.errorMessage != null && homeProvider.patient == null) {
+    if (homeProvider.errorMessage != null &&
+        homeProvider.encounterSummary == null) {
       return ErrorStateWidget(
         message: homeProvider.errorMessage!,
         onRetry: () => homeProvider.retry(),
@@ -343,37 +340,70 @@ class HomeScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.success.withValues(alpha: 0.35)),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Row(children: [
-            Icon(Icons.check_circle_rounded, color: AppColors.success),
-            SizedBox(width: 8),
-            Expanded(child: Text('Đã hoàn tất lượt khám', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.success))),
-          ]),
-          const SizedBox(height: 10),
-          Text(summary.patientName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          if (summary.checkInTime != null)
-            Text('Ngày khám: ${hospitalTime(summary.checkInTime!, pattern: 'dd/MM/yyyy')}'),
-          if (summary.doctorName?.isNotEmpty == true) ...[
-            const SizedBox(height: 6),
-            Text(summary.doctorName!, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: AppColors.success),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Đã hoàn tất lượt khám',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.success,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              summary.patientName,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+            if (summary.checkInTime != null)
+              Text(
+                'Ngày khám: ${hospitalTime(summary.checkInTime!, pattern: 'dd/MM/yyyy')}',
+              ),
+            if (summary.doctorName?.isNotEmpty == true) ...[
+              const SizedBox(height: 6),
+              Text(
+                summary.doctorName!,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => onNavigateToTab?.call(2),
+                icon: const Icon(Icons.history_rounded),
+                label: const Text('Xem lộ trình đã hoàn tất'),
+              ),
+            ),
           ],
-          const SizedBox(height: 12),
-          SizedBox(width: double.infinity, child: FilledButton.icon(
-            onPressed: () => onNavigateToTab?.call(2),
-            icon: const Icon(Icons.history_rounded),
-            label: const Text('Xem lộ trình đã hoàn tất'),
-          )),
-        ]),
+        ),
       );
     }
 
     // Case 1: Có active encounter thật trên hệ thống
     if (homeProvider.hasActiveEncounter) {
-      return _buildActiveEncounterCard(context, homeProvider, homeProvider.encounterSummary!);
+      return _buildActiveEncounterCard(
+        context,
+        homeProvider,
+        homeProvider.encounterSummary!,
+      );
     }
 
     // Case 2: Có active appointment thật
-    if (homeProvider.hasActiveAppointment && homeProvider.activeAppointment != null) {
+    if (homeProvider.hasActiveAppointment &&
+        homeProvider.activeAppointment != null) {
       return _buildActiveAppointmentCard(homeProvider.activeAppointment!);
     }
 
@@ -400,20 +430,32 @@ class HomeScreen extends StatelessWidget {
               color: AppColors.primaryLight,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.confirmation_number_outlined, color: AppColors.primary, size: 28),
+            child: const Icon(
+              Icons.confirmation_number_outlined,
+              color: AppColors.primary,
+              size: 28,
+            ),
           ),
           const SizedBox(height: 12),
           Text(
             homeProvider.currentPhone.isNotEmpty
                 ? 'Chưa có lượt khám cho SĐT ${homeProvider.currentPhone}'
-                : 'Tra cứu phiếu khám & Số thứ tự',
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                : 'Làm mới lượt khám & Số thứ tự',
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 6),
           const Text(
             'Nhập số điện thoại để kiểm tra trạng thái tiếp nhận, số thứ tự và lộ trình di chuyển tại viện.',
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.4),
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+              height: 1.4,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
@@ -423,15 +465,23 @@ class HomeScreen extends StatelessWidget {
                 child: SizedBox(
                   height: 42,
                   child: ElevatedButton.icon(
-                    onPressed: () => _showQuickLookupDialog(context, homeProvider),
+                    onPressed: () => homeProvider.loadHomeData(isRefresh: true),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     icon: const Icon(Icons.search_rounded, size: 16),
-                    label: const Text('Tra cứu SĐT', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    label: const Text(
+                      'Làm mới',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -444,10 +494,18 @@ class HomeScreen extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.primary,
                       side: const BorderSide(color: AppColors.primary),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     icon: const Icon(Icons.calendar_month_rounded, size: 16),
-                    label: const Text('Đặt lịch hẹn', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    label: const Text(
+                      'Đặt lịch hẹn',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -458,7 +516,10 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPregnancyDashboardCard(BuildContext context, PatientModel patient) {
+  Widget _buildPregnancyDashboardCard(
+    BuildContext context,
+    PatientModel patient,
+  ) {
     final weeks = patient.gestationalWeeks ?? 16;
     final days = patient.gestationalDays ?? 0;
     final edd = patient.edd ?? 'Chưa xác định';
@@ -469,7 +530,9 @@ class HomeScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.maternityPink.withValues(alpha: 0.4)),
+        border: Border.all(
+          color: AppColors.maternityPink.withValues(alpha: 0.4),
+        ),
         boxShadow: [
           BoxShadow(
             color: AppColors.maternityPink.withValues(alpha: 0.08),
@@ -489,7 +552,11 @@ class HomeScreen extends StatelessWidget {
                   color: AppColors.maternityPinkLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.pregnant_woman_rounded, color: AppColors.maternityPink, size: 20),
+                child: const Icon(
+                  Icons.pregnant_woman_rounded,
+                  color: AppColors.maternityPink,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 10),
               const Expanded(
@@ -498,11 +565,18 @@ class HomeScreen extends StatelessWidget {
                   children: [
                     Text(
                       'Thai kỳ hiện tại của bạn',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     Text(
                       'Theo dõi tuổi thai và mốc khám định kỳ',
-                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -515,14 +589,21 @@ class HomeScreen extends StatelessWidget {
                 ),
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primaryLight,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Text(
                     'Chi tiết >',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
                   ),
                 ),
               ),
@@ -535,22 +616,42 @@ class HomeScreen extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Tuổi thai', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  const Text(
+                    'Tuổi thai',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
                   const SizedBox(height: 2),
                   Text(
                     'Tuần $weeks + $days ngày',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.primary),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primary,
+                    ),
                   ),
                 ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Text('Dự sinh (EDD)', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  const Text(
+                    'Dự sinh (EDD)',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
                   const SizedBox(height: 2),
                   Text(
                     edd,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ],
               ),
@@ -567,11 +668,17 @@ class HomeScreen extends StatelessWidget {
     EncounterSummaryModel encounter,
   ) {
     final patient = homeProvider.patient;
-    final serviceName = homeProvider.activeAppointment?.serviceTypeName ?? 'Khám Sản - Phụ Khoa';
-    final priority = encounter.isEmergency ? 'Cấp 1 - Cấp cứu' : 'Cấp 3 - Tiêu chuẩn';
+    final serviceName =
+        homeProvider.activeAppointment?.serviceTypeName ??
+        'Khám Sản - Phụ Khoa';
+    final priority = encounter.isEmergency
+        ? 'Cấp 1 - Cấp cứu'
+        : 'Cấp 3 - Tiêu chuẩn';
     final statusText = encounter.encounterStatus.toLowerCase() == 'inqueue'
         ? 'Đang Chờ Khám'
-        : (encounter.encounterStatus.toLowerCase() == 'inconsultation' ? 'Đang Khám Bác Sĩ' : 'Đang Tiếp Đón');
+        : (encounter.encounterStatus.toLowerCase() == 'inconsultation'
+              ? 'Đang Khám Bác Sĩ'
+              : 'Đang Tiếp Đón');
 
     final displayRoom = encounter.roomName?.trim().isNotEmpty == true
         ? encounter.roomName!.trim()
@@ -580,8 +687,9 @@ class HomeScreen extends StatelessWidget {
         ? encounter.doctorName!.trim()
         : 'Chưa có thông tin bác sĩ';
     final calculatedWait = encounter.estimatedWaitMinutes;
-    final rawTicket = encounter.queueNumber?.toString()
-        ?? encounter.ticketCode
+    final rawTicket =
+        encounter.queueNumber?.toString() ??
+        encounter.ticketCode
             ?.replaceFirst(RegExp(r'^\s*STT\s*#?\s*', caseSensitive: false), '')
             .replaceAll('#', '')
             .trim();
@@ -610,29 +718,32 @@ class HomeScreen extends StatelessWidget {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: encounter.isEmergency
                           ? AppColors.emergencyLight
                           : (!homeProvider.hasActiveAppointment
-                              ? AppColors.secondaryLight
-                              : AppColors.primaryLight),
+                                ? AppColors.secondaryLight
+                                : AppColors.primaryLight),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       encounter.isEmergency
                           ? 'CẤP CỨU KHẨN CẤP'
                           : (!homeProvider.hasActiveAppointment
-                              ? 'TIẾP NHẬN TẠI QUẦY (VÃNG LAI)'
-                              : statusText.toUpperCase()),
+                                ? 'TIẾP NHẬN TẠI QUẦY (VÃNG LAI)'
+                                : statusText.toUpperCase()),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: encounter.isEmergency
                             ? AppColors.emergency
                             : (!homeProvider.hasActiveAppointment
-                                ? AppColors.secondary
-                                : AppColors.primary),
+                                  ? AppColors.secondary
+                                  : AppColors.primary),
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                       ),
@@ -643,7 +754,10 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(width: 8),
               if (rawTicket != null && rawTicket.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primary,
                     borderRadius: BorderRadius.circular(8),
@@ -695,22 +809,44 @@ class HomeScreen extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Phân loại ưu tiên', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  const Text(
+                    'Phân loại ưu tiên',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
                   const SizedBox(height: 2),
                   Text(
                     priority,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.secondary),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.secondary,
+                    ),
                   ),
                 ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Text('Chờ ước tính', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  const Text(
+                    'Chờ ước tính',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
                   const SizedBox(height: 2),
                   Text(
-                    calculatedWait != null ? '~$calculatedWait phút' : 'Chưa có',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.success),
+                    calculatedWait != null
+                        ? '~$calculatedWait phút'
+                        : 'Chưa có',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.success,
+                    ),
                   ),
                 ],
               ),
@@ -726,11 +862,19 @@ class HomeScreen extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.biotech_outlined, size: 14, color: AppColors.secondary),
+                  const Icon(
+                    Icons.biotech_outlined,
+                    size: 14,
+                    color: AppColors.secondary,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     'Có ${encounter.preExamOrders.length} chỉ định cận lâm sàng trước khám',
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.secondary),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.secondary,
+                    ),
                   ),
                 ],
               ),
@@ -746,7 +890,9 @@ class HomeScreen extends StatelessWidget {
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               icon: const Icon(Icons.confirmation_number_rounded, size: 18),
               label: const Text(
@@ -760,101 +906,12 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  void _showQuickLookupDialog(BuildContext context, HomeProvider homeProvider) {
-    final controller = TextEditingController(text: homeProvider.currentPhone);
-
-    showDialog(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.confirmation_number_rounded, color: AppColors.primary),
-            SizedBox(width: 8),
-            Text('Tra cứu phiếu khám', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Nhập số điện thoại bệnh nhân để tra cứu số thứ tự và lộ trình di chuyển:',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.phone,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.phone_android_rounded, size: 20),
-                hintText: 'Ví dụ: 0938555666',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text('Gợi ý tài khoản demo:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                ActionChip(
-                  avatar: const Icon(Icons.person_pin_circle_rounded, size: 16),
-                  label: const Text('Phan Hoàng Bảo Ngọc (0938668899)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                  onPressed: () {
-                    controller.text = '0938668899';
-                  },
-                ),
-                ActionChip(
-                  avatar: const Icon(Icons.person_pin_circle_rounded, size: 16),
-                  label: const Text('Phạm Hoàng Lan (0938555666)', style: TextStyle(fontSize: 11)),
-                  onPressed: () {
-                    controller.text = '0938555666';
-                  },
-                ),
-                ActionChip(
-                  avatar: const Icon(Icons.person_pin_circle_rounded, size: 16),
-                  label: const Text('Trần An (0977112233)', style: TextStyle(fontSize: 11)),
-                  onPressed: () {
-                    controller.text = '0977112233';
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Đóng', style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            icon: const Icon(Icons.search_rounded, size: 16),
-            label: const Text('Xem / Theo Dõi'),
-            onPressed: () {
-              final phone = controller.text.trim();
-              Navigator.pop(dialogCtx);
-              if (phone.isNotEmpty) {
-                homeProvider.switchPhone(phone);
-                onNavigateToTab?.call(0);
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildActiveAppointmentCard(AppointmentModel appointment) {
-    final apptCode = appointment.id.length >= 8 ? appointment.id.substring(0, 8).toUpperCase() : appointment.id;
-    final dateStr = DateFormat('HH:mm - dd/MM/yyyy').format(appointment.scheduledTime);
+    final apptCode = appointment.id.length >= 8
+        ? appointment.id.substring(0, 8).toUpperCase()
+        : appointment.id;
+    final dateStr = DateFormat('HH:mm - dd/MM/yyyy')
+        .format(appointment.scheduledTime);
 
     return Container(
       width: double.infinity,
@@ -914,7 +971,11 @@ class HomeScreen extends StatelessWidget {
           const SizedBox(height: 4),
           Row(
             children: [
-              const Icon(Icons.access_time_rounded, size: 14, color: AppColors.textSecondary),
+              const Icon(
+                Icons.access_time_rounded,
+                size: 14,
+                color: AppColors.textSecondary,
+              ),
               const SizedBox(width: 6),
               Text(
                 dateStr,
@@ -1000,7 +1061,10 @@ class HomeScreen extends StatelessWidget {
                 iconColor: const Color(0xFF0077C8),
                 iconBgColor: const Color(0xFFEBF5FF),
                 onTap: () {
-                  final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
+                  final bookingProvider = Provider.of<BookingProvider>(
+                    context,
+                    listen: false,
+                  );
                   bookingProvider.setIsFollowUp(true);
                   onNavigateToTab?.call(1);
                 },
@@ -1089,7 +1153,9 @@ class HomeScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.maternityPinkLight.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.maternityPink.withValues(alpha: 0.2)),
+        border: Border.all(
+          color: AppColors.maternityPink.withValues(alpha: 0.2),
+        ),
       ),
       child: Row(
         children: [
@@ -1098,7 +1164,9 @@ class HomeScreen extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.maternityPink.withValues(alpha: 0.3)),
+              border: Border.all(
+                color: AppColors.maternityPink.withValues(alpha: 0.3),
+              ),
             ),
             child: const Icon(
               Icons.baby_changing_station_rounded,
@@ -1191,10 +1259,7 @@ class HomeScreen extends StatelessWidget {
                 SizedBox(height: 1),
                 Text(
                   'Hotline tiếp đón khẩn cấp: 1900 6868',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textPrimary,
-                  ),
+                  style: TextStyle(fontSize: 11, color: AppColors.textPrimary),
                 ),
               ],
             ),

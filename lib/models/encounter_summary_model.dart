@@ -33,7 +33,9 @@ class PreExamOrderModel {
           ? DateTime.tryParse(json['completedAt'].toString())
           : null,
       completedBy: json['completedBy']?.toString(),
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now(),
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+          DateTime.now(),
     );
   }
 
@@ -50,6 +52,42 @@ class PreExamOrderModel {
       'createdAt': createdAt.toIso8601String(),
     };
   }
+}
+
+/// Only workflow timestamps are exposed to the patient journey, not measurements.
+class NursingIntakeProgressModel {
+  final DateTime? intakeSavedAt;
+  final DateTime? vitalSignsRecordedAt;
+
+  const NursingIntakeProgressModel({
+    this.intakeSavedAt,
+    this.vitalSignsRecordedAt,
+  });
+
+  bool get hasIntake => intakeSavedAt != null;
+  bool get hasVitalSigns => vitalSignsRecordedAt != null;
+  bool get isComplete => hasIntake && hasVitalSigns;
+  bool get hasStarted => hasIntake || hasVitalSigns;
+  DateTime? get completedAt => !isComplete
+      ? null
+      : intakeSavedAt!.isAfter(vitalSignsRecordedAt!)
+      ? intakeSavedAt
+      : vitalSignsRecordedAt;
+
+  factory NursingIntakeProgressModel.fromJson(Map<String, dynamic> json) =>
+      NursingIntakeProgressModel(
+        intakeSavedAt: DateTime.tryParse(
+          json['intakeSavedAt']?.toString() ?? '',
+        ),
+        vitalSignsRecordedAt: DateTime.tryParse(
+          json['vitalSignsRecordedAt']?.toString() ?? '',
+        ),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'intakeSavedAt': intakeSavedAt?.toIso8601String(),
+    'vitalSignsRecordedAt': vitalSignsRecordedAt?.toIso8601String(),
+  };
 }
 
 class EncounterSummaryModel {
@@ -69,6 +107,7 @@ class EncounterSummaryModel {
   final String? doctorName;
   final String? ticketCode;
   final String? patientPhone;
+  final NursingIntakeProgressModel? nursingIntake;
 
   const EncounterSummaryModel({
     required this.encounterId,
@@ -87,9 +126,11 @@ class EncounterSummaryModel {
     this.doctorName,
     this.ticketCode,
     this.patientPhone,
+    this.nursingIntake,
   });
 
-  bool get isFinalized => const {'finalized', 'completed'}.contains(encounterStatus.toLowerCase());
+  bool get isFinalized =>
+      const {'finalized', 'completed'}.contains(encounterStatus.toLowerCase());
 
   bool get isConsulting => queueStatus?.toLowerCase() == 'inprogress';
 
@@ -128,6 +169,11 @@ class EncounterSummaryModel {
       doctorName: json['doctorName']?.toString(),
       ticketCode: json['ticketCode']?.toString(),
       patientPhone: json['patientPhone']?.toString(),
+      nursingIntake: json['nursingIntake'] is Map<String, dynamic>
+          ? NursingIntakeProgressModel.fromJson(
+              json['nursingIntake'] as Map<String, dynamic>,
+            )
+          : null,
     );
   }
 
@@ -149,6 +195,7 @@ class EncounterSummaryModel {
       'doctorName': doctorName,
       'ticketCode': ticketCode,
       'patientPhone': patientPhone,
+      'nursingIntake': nursingIntake?.toJson(),
     };
   }
 }

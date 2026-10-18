@@ -1,6 +1,22 @@
 import 'package:flowcare_mobile/models/encounter_summary_model.dart';
 import 'package:flowcare_mobile/models/paraclinical_plan_model.dart';
 
+Map<String, dynamic> activeTimedPlanJson() {
+  final json = timedPlanJson();
+  json['status'] = 'Active';
+  json['estimatedTotalMinutes'] = 81;
+  final steps = json['steps'] as List;
+  for (final step in steps) {
+    step['status'] = step['id'] == 'xray' ? 'InQueue' : 'Pending';
+    step.remove('actualStartTime');
+    step.remove('actualEndTime');
+    step.remove('resultReadyTime');
+  }
+  steps[0]['estimatedStartTime'] = '2026-10-12T12:54:58.360+07:00';
+  steps[1]['estimatedStartTime'] = '2026-10-12T13:02:58.360+07:00';
+  return json;
+}
+
 Map<String, dynamic> timedPlanJson() => {
   'id': 'plan-1',
   'encounterId': 'visit-1',
@@ -15,6 +31,8 @@ Map<String, dynamic> timedPlanJson() => {
       'assignedRoomName': 'Phòng X-Quang thực tế',
       'stepOrder': 1,
       'status': 'Completed',
+      'isResultFinalized': true,
+      'requiresFinalizedResult': true,
       'estimatedTravelMinutes': 3,
       'estimatedDurationMinutes': 5,
       'estimatedResultWaitMinutes': 15,
@@ -30,6 +48,8 @@ Map<String, dynamic> timedPlanJson() => {
       'assignedRoomName': 'Phòng xét nghiệm thực tế',
       'stepOrder': 2,
       'status': 'Completed',
+      'isResultFinalized': true,
+      'requiresFinalizedResult': true,
       'estimatedTravelMinutes': 3,
       'estimatedDurationMinutes': 5,
       'estimatedResultWaitMinutes': 60,
@@ -47,6 +67,8 @@ EncounterSummaryModel summaryFixture({
   String queueStatus = 'Done',
   String encounterId = 'visit-1',
   String phone = '0900000001',
+  NursingIntakeProgressModel? nursingIntake,
+  bool nursingComplete = true,
 }) => EncounterSummaryModel(
   encounterId: encounterId,
   patientName: 'Bệnh nhân kiểm thử',
@@ -59,6 +81,14 @@ EncounterSummaryModel summaryFixture({
   queueNumber: 7,
   estimatedWaitMinutes: 5,
   checkInTime: DateTime.parse('2026-10-12T08:34:16+07:00'),
+  nursingIntake:
+      nursingIntake ??
+      (nursingComplete
+          ? NursingIntakeProgressModel(
+              intakeSavedAt: DateTime.parse('2026-10-12T08:40:00+07:00'),
+              vitalSignsRecordedAt: DateTime.parse('2026-10-12T08:42:00+07:00'),
+            )
+          : null),
 );
 
 ParaclinicalPlanModel planFixture({
@@ -96,6 +126,7 @@ ParaclinicalStepModel serviceFixture({
   int order = 1,
   String status = 'Completed',
   bool held = false,
+  bool? isResultFinalized = true,
 }) => ParaclinicalStepModel(
   id: id,
   serviceTypeName: title,
@@ -104,6 +135,8 @@ ParaclinicalStepModel serviceFixture({
   floor: '1',
   stepOrder: order,
   status: status,
+  isResultFinalized: isResultFinalized,
+  requiresFinalizedResult: true,
   queueNumber: 2,
   isHeldForResult: held,
   waitsForResultOf: held ? ['Xét nghiệm máu'] : [],

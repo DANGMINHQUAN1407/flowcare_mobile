@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/theme/app_colors.dart';
 import '../../models/appointment_model.dart';
 import '../../models/medical_record_model.dart';
@@ -16,10 +17,7 @@ import '../../core/utils/hospital_time.dart';
 class HistoryScreen extends StatelessWidget {
   final void Function(int tabIndex)? onNavigateToTab;
 
-  const HistoryScreen({
-    super.key,
-    this.onNavigateToTab,
-  });
+  const HistoryScreen({super.key, this.onNavigateToTab});
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +34,7 @@ class HistoryScreen extends StatelessWidget {
                 icon: const Icon(Icons.refresh_rounded),
                 tooltip: 'Làm mới',
                 onPressed: () => historyProvider.loadAppointments(
-                  patient?.id,
+                  homeProvider.patientId,
                   isRefresh: true,
                   phone: homeProvider.currentPhone,
                   patientName: patient?.fullName,
@@ -47,7 +45,7 @@ class HistoryScreen extends StatelessWidget {
           body: SafeArea(
             child: RefreshIndicator(
               onRefresh: () => historyProvider.loadAppointments(
-                patient?.id,
+                homeProvider.patientId,
                 isRefresh: true,
                 phone: homeProvider.currentPhone,
                 patientName: patient?.fullName,
@@ -73,7 +71,9 @@ class HistoryScreen extends StatelessWidget {
                           end: Alignment.bottomRight,
                         ),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.3),
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: AppColors.primary.withValues(alpha: 0.05),
@@ -92,7 +92,10 @@ class HistoryScreen extends StatelessWidget {
                                 height: 48,
                                 decoration: const BoxDecoration(
                                   gradient: LinearGradient(
-                                    colors: [Color(0xFF005BAC), Color(0xFF0077C8)],
+                                    colors: [
+                                      Color(0xFF005BAC),
+                                      Color(0xFF0077C8),
+                                    ],
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
                                   ),
@@ -113,7 +116,9 @@ class HistoryScreen extends StatelessWidget {
                                       children: [
                                         Expanded(
                                           child: Text(
-                                            patient != null ? patient.fullName : 'Sổ bệnh án điện tử',
+                                            patient != null
+                                                ? patient.fullName
+                                                : 'Sổ bệnh án điện tử',
                                             style: const TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.w800,
@@ -123,16 +128,28 @@ class HistoryScreen extends StatelessWidget {
                                           ),
                                         ),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 7,
+                                            vertical: 2,
+                                          ),
                                           decoration: BoxDecoration(
                                             color: AppColors.successLight,
-                                            borderRadius: BorderRadius.circular(6),
-                                            border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                            border: Border.all(
+                                              color: AppColors.success
+                                                  .withValues(alpha: 0.3),
+                                            ),
                                           ),
                                           child: const Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
-                                              Icon(Icons.verified_rounded, size: 12, color: AppColors.success),
+                                              Icon(
+                                                Icons.verified_rounded,
+                                                size: 12,
+                                                color: AppColors.success,
+                                              ),
                                               SizedBox(width: 3),
                                               Text(
                                                 'Hồ sơ bệnh nhân',
@@ -166,18 +183,26 @@ class HistoryScreen extends StatelessWidget {
                           if (patient != null) ...[
                             const SizedBox(height: 10),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 7,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(color: AppColors.border),
                               ),
                               child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Row(
                                     children: [
-                                      const Icon(Icons.badge_outlined, size: 14, color: AppColors.primary),
+                                      const Icon(
+                                        Icons.badge_outlined,
+                                        size: 14,
+                                        color: AppColors.primary,
+                                      ),
                                       const SizedBox(width: 4),
                                       Text(
                                         'Mã BN: PID-${patient.id.length >= 8 ? patient.id.substring(0, 8).toUpperCase() : patient.id.toUpperCase()}',
@@ -191,7 +216,11 @@ class HistoryScreen extends StatelessWidget {
                                   ),
                                   Row(
                                     children: [
-                                      const Icon(Icons.phone_rounded, size: 13, color: AppColors.textSecondary),
+                                      const Icon(
+                                        Icons.phone_rounded,
+                                        size: 13,
+                                        color: AppColors.textSecondary,
+                                      ),
                                       const SizedBox(width: 4),
                                       Text(
                                         patient.phone,
@@ -214,24 +243,54 @@ class HistoryScreen extends StatelessWidget {
                     const SizedBox(height: 16),
 
                     if (homeProvider.visits.isNotEmpty) ...[
-                      const Text('Lượt khám tại bệnh viện', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 10),
-                      ...homeProvider.visits.map((visit) => Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          leading: Icon(visit.isFinalized ? Icons.check_circle_outline_rounded : Icons.route_outlined,
-                            color: visit.isFinalized ? AppColors.success : AppColors.primary),
-                          title: Text(visit.serviceTypeName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                          subtitle: Text(hospitalTime(visit.visitTime, pattern: 'dd/MM/yyyy') +
-                            (visit.isFinalized ? ' · Đã hoàn tất' : ' · Đang theo dõi')),
-                          trailing: const Icon(Icons.chevron_right_rounded),
-                          onTap: () {
-                            homeProvider.selectVisit(visit.encounterId);
-                            onNavigateToTab?.call(2);
-                          },
+                      const Text(
+                        'Lượt khám tại bệnh viện',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
                         ),
-                      )),
+                      ),
+                      const SizedBox(height: 10),
+                      ...homeProvider.visits.map(
+                        (visit) => Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            leading: Icon(
+                              visit.isFinalized
+                                  ? Icons.check_circle_outline_rounded
+                                  : Icons.route_outlined,
+                              color: visit.isFinalized
+                                  ? AppColors.success
+                                  : AppColors.primary,
+                            ),
+                            title: Text(
+                              visit.serviceTypeName,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(
+                              hospitalTime(
+                                    visit.visitTime,
+                                    pattern: 'dd/MM/yyyy',
+                                  ) +
+                                  (visit.isFinalized
+                                      ? ' · Đã hoàn tất'
+                                      : ' · Đang theo dõi'),
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () {
+                              homeProvider.selectVisit(visit.encounterId);
+                              onNavigateToTab?.call(2);
+                            },
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 14),
                     ],
 
@@ -273,7 +332,11 @@ class HistoryScreen extends StatelessWidget {
                     const SizedBox(height: 16),
 
                     // Content Body based on state
-                    _buildHistoryContent(context, homeProvider, historyProvider),
+                    _buildHistoryContent(
+                      context,
+                      homeProvider,
+                      historyProvider,
+                    ),
 
                     const SizedBox(height: 24),
                   ],
@@ -338,7 +401,9 @@ class HistoryScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color: isSelected ? Colors.white.withValues(alpha: 0.25) : AppColors.border,
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.25)
+                      : AppColors.border,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -372,20 +437,10 @@ class HistoryScreen extends StatelessWidget {
       return ErrorStateWidget(
         message: historyProvider.errorMessage!,
         onRetry: () => historyProvider.retry(
-          homeProvider.patient?.id,
+          homeProvider.patientId,
           phone: homeProvider.currentPhone,
           patientName: homeProvider.patient?.fullName,
         ),
-      );
-    }
-
-    if (homeProvider.patient == null) {
-      return EmptyStateWidget(
-        icon: Icons.person_search_rounded,
-        title: 'Chưa có thông tin bệnh nhân',
-        message: 'Vui lòng kiểm tra lại số điện thoại để tra cứu hồ sơ.',
-        ctaText: 'Đồng bộ hồ sơ',
-        onCtaPressed: () => homeProvider.loadHomeData(),
       );
     }
 
@@ -406,7 +461,12 @@ class HistoryScreen extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final appointment = historyProvider.appointments[index];
-          return _buildAppointmentCard(context, appointment, homeProvider.patient, homeProvider.currentPhone);
+          return _buildAppointmentCard(
+            context,
+            appointment,
+            homeProvider.patient,
+            homeProvider.currentPhone,
+          );
         },
       );
     }
@@ -462,7 +522,7 @@ class HistoryScreen extends StatelessWidget {
 
     final patientNameDisplay = appointment.patientName.isNotEmpty
         ? appointment.patientName
-        : (patient?.fullName ?? 'Vũ Trang');
+        : (patient?.fullName ?? 'Chưa có tên bệnh nhân');
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -534,31 +594,48 @@ class HistoryScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.person_pin_rounded, size: 16, color: AppColors.primary),
+                    const Icon(
+                      Icons.person_pin_rounded,
+                      size: 16,
+                      color: AppColors.primary,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: RichText(
                         text: TextSpan(
-                          style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textPrimary,
+                          ),
                           children: [
                             const TextSpan(text: 'Người khám: '),
                             TextSpan(
                               text: patientNameDisplay,
-                              style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ],
                         ),
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.primaryLight,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         patient?.gender ?? 'Nữ',
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.primary),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
                       ),
                     ),
                   ],
@@ -566,23 +643,39 @@ class HistoryScreen extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(Icons.cake_outlined, size: 13, color: AppColors.textSecondary),
+                    const Icon(
+                      Icons.cake_outlined,
+                      size: 13,
+                      color: AppColors.textSecondary,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       'Ngày sinh: ${_formatDobAndAge(patient?.dob)}',
-                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 const Row(
                   children: [
-                    Icon(Icons.shield_outlined, size: 13, color: AppColors.warning),
+                    Icon(
+                      Icons.shield_outlined,
+                      size: 13,
+                      color: AppColors.warning,
+                    ),
                     SizedBox(width: 4),
                     Expanded(
                       child: Text(
                         'Đối chiếu Họ tên & Năm sinh với Bác sĩ khi vào phòng khám',
-                        style: TextStyle(fontSize: 10, color: AppColors.warning, fontStyle: FontStyle.italic),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: AppColors.warning,
+                          fontStyle: FontStyle.italic,
+                        ),
                       ),
                     ),
                   ],
@@ -594,10 +687,15 @@ class HistoryScreen extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              const Icon(Icons.access_time_rounded, size: 14, color: AppColors.textSecondary),
+              const Icon(
+                Icons.access_time_rounded,
+                size: 14,
+                color: AppColors.textSecondary,
+              ),
               const SizedBox(width: 6),
               Text(
-                DateFormat('HH:mm - dd/MM/yyyy').format(appointment.scheduledTime),
+                DateFormat('HH:mm - dd/MM/yyyy')
+                    .format(appointment.scheduledTime),
                 style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.textSecondary,
@@ -609,7 +707,11 @@ class HistoryScreen extends StatelessWidget {
           const SizedBox(height: 4),
           Row(
             children: [
-              const Icon(Icons.tag_rounded, size: 14, color: AppColors.textSecondary),
+              const Icon(
+                Icons.tag_rounded,
+                size: 14,
+                color: AppColors.textSecondary,
+              ),
               const SizedBox(width: 6),
               Text(
                 'Mã lịch hẹn: ${appointment.id.substring(0, appointment.id.length > 8 ? 8 : appointment.id.length).toUpperCase()}',
@@ -626,12 +728,18 @@ class HistoryScreen extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () => _showCheckInQrModal(context, appointment, patient),
+              onPressed: () =>
+                  _showCheckInQrModal(context, appointment, patient),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.primary,
                 side: const BorderSide(color: AppColors.primary),
-                padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 9,
+                  horizontal: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               icon: const Icon(Icons.qr_code_2_rounded, size: 18),
               label: const Text(
@@ -646,7 +754,10 @@ class HistoryScreen extends StatelessWidget {
   }
 
   // --- MEDICAL RECORD CARD (ENCOUNTER & PRESCRIPTIONS) ---
-  Widget _buildMedicalRecordCard(BuildContext context, MedicalRecordModel record) {
+  Widget _buildMedicalRecordCard(
+    BuildContext context,
+    MedicalRecordModel record,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -673,7 +784,9 @@ class HistoryScreen extends StatelessWidget {
                 topRight: Radius.circular(16),
               ),
               border: Border(
-                bottom: BorderSide(color: AppColors.success.withValues(alpha: 0.2)),
+                bottom: BorderSide(
+                  color: AppColors.success.withValues(alpha: 0.2),
+                ),
               ),
             ),
             child: Column(
@@ -684,7 +797,11 @@ class HistoryScreen extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 20),
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          color: AppColors.success,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           record.departmentName,
@@ -697,7 +814,10 @@ class HistoryScreen extends StatelessWidget {
                       ],
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.success,
                         borderRadius: BorderRadius.circular(20),
@@ -717,11 +837,16 @@ class HistoryScreen extends StatelessWidget {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.3),
+                        ),
                       ),
                       child: Text(
                         'STT: ${record.ticketNumber}',
@@ -755,7 +880,11 @@ class HistoryScreen extends StatelessWidget {
                 // Doctor & Vital signs
                 Row(
                   children: [
-                    const Icon(Icons.person_rounded, size: 16, color: AppColors.primary),
+                    const Icon(
+                      Icons.person_rounded,
+                      size: 16,
+                      color: AppColors.primary,
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       'Bác sĩ: ${record.doctorName}',
@@ -787,10 +916,26 @@ class HistoryScreen extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildVitalBadge('Tuần thai', '${record.vitalSigns!.gestationalWeeks}w', Icons.child_care_rounded),
-                        _buildVitalBadge('Huyết áp', record.vitalSigns!.bloodPressure, Icons.favorite_border_rounded),
-                        _buildVitalBadge('Tim thai', '${record.vitalSigns!.fetalHeartRate} bpm', Icons.monitor_heart_rounded),
-                        _buildVitalBadge('Cân nặng', '${record.vitalSigns!.weight} kg', Icons.monitor_weight_outlined),
+                        _buildVitalBadge(
+                          'Tuần thai',
+                          '${record.vitalSigns!.gestationalWeeks}w',
+                          Icons.child_care_rounded,
+                        ),
+                        _buildVitalBadge(
+                          'Huyết áp',
+                          record.vitalSigns!.bloodPressure,
+                          Icons.favorite_border_rounded,
+                        ),
+                        _buildVitalBadge(
+                          'Tim thai',
+                          '${record.vitalSigns!.fetalHeartRate} bpm',
+                          Icons.monitor_heart_rounded,
+                        ),
+                        _buildVitalBadge(
+                          'Cân nặng',
+                          '${record.vitalSigns!.weight} kg',
+                          Icons.monitor_weight_outlined,
+                        ),
                       ],
                     ),
                   ),
@@ -827,12 +972,18 @@ class HistoryScreen extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppColors.secondary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.secondary.withValues(alpha: 0.2)),
+                    border: Border.all(
+                      color: AppColors.secondary.withValues(alpha: 0.2),
+                    ),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.tips_and_updates_rounded, color: AppColors.secondary, size: 18),
+                      const Icon(
+                        Icons.tips_and_updates_rounded,
+                        color: AppColors.secondary,
+                        size: 18,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Column(
@@ -867,7 +1018,11 @@ class HistoryScreen extends StatelessWidget {
                 // Prescription Section
                 Row(
                   children: [
-                    const Icon(Icons.medication_rounded, size: 16, color: AppColors.primary),
+                    const Icon(
+                      Icons.medication_rounded,
+                      size: 16,
+                      color: AppColors.primary,
+                    ),
                     const SizedBox(width: 6),
                     const Text(
                       'ĐƠN THUỐC ĐIỆN TỬ',
@@ -890,14 +1045,20 @@ class HistoryScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                ...record.prescriptions.map((item) => _buildPrescriptionTile(item)),
+                ...record.prescriptions.map(
+                  (item) => _buildPrescriptionTile(item),
+                ),
 
                 const SizedBox(height: 16),
 
                 // Lab Orders Section
                 Row(
                   children: [
-                    const Icon(Icons.biotech_rounded, size: 16, color: AppColors.warning),
+                    const Icon(
+                      Icons.biotech_rounded,
+                      size: 16,
+                      color: AppColors.warning,
+                    ),
                     const SizedBox(width: 6),
                     const Text(
                       'KẾT QUẢ CẬN LÂM SÀNG',
@@ -923,12 +1084,17 @@ class HistoryScreen extends StatelessWidget {
                   height: 44,
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
+                      final bookingProvider = Provider.of<BookingProvider>(
+                        context,
+                        listen: false,
+                      );
                       bookingProvider.setupFollowUpFromRecord(record);
                       onNavigateToTab?.call(1);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Đã chuyển sang màn hình Đặt lịch tái khám với ${record.doctorName}.'),
+                          content: Text(
+                            'Đã chuyển sang màn hình Đặt lịch tái khám với ${record.doctorName}.',
+                          ),
                           backgroundColor: const Color(0xFF0077C8),
                           duration: const Duration(seconds: 2),
                         ),
@@ -975,10 +1141,7 @@ class HistoryScreen extends StatelessWidget {
         ),
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 9,
-            color: AppColors.textSecondary,
-          ),
+          style: const TextStyle(fontSize: 9, color: AppColors.textSecondary),
         ),
       ],
     );
@@ -1044,7 +1207,11 @@ class HistoryScreen extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.check_circle_outline_rounded, size: 16, color: AppColors.success),
+          const Icon(
+            Icons.check_circle_outline_rounded,
+            size: 16,
+            color: AppColors.success,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -1114,11 +1281,7 @@ class HistoryScreen extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(
-          color: fg,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
+        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -1133,7 +1296,8 @@ class HistoryScreen extends StatelessWidget {
       if (dt != null) {
         final now = DateTime.now();
         int age = now.year - dt.year;
-        if (now.month < dt.month || (now.month == dt.month && now.day < dt.day)) {
+        if (now.month < dt.month ||
+            (now.month == dt.month && now.day < dt.day)) {
           age--;
         }
         final formattedDate = DateFormat('dd/MM/yyyy').format(dt);
@@ -1154,7 +1318,7 @@ class HistoryScreen extends StatelessWidget {
     final dobText = _formatDobAndAge(rawDob);
     final patientName = appointment.patientName.isNotEmpty
         ? appointment.patientName
-        : (patient?.fullName ?? 'Vũ Trang');
+        : (patient?.fullName ?? 'Chưa có tên bệnh nhân');
     final codeDisplay = appointment.id.length >= 6
         ? appointment.id.substring(0, 6).toUpperCase()
         : appointment.id.toUpperCase();
@@ -1186,7 +1350,11 @@ class HistoryScreen extends StatelessWidget {
               const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.qr_code_scanner_rounded, color: AppColors.primary, size: 20),
+                  Icon(
+                    Icons.qr_code_scanner_rounded,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
                   SizedBox(width: 8),
                   Text(
                     'Mã Tiếp Đón & Check-in Điện Tử',
@@ -1237,11 +1405,16 @@ class HistoryScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.primaryLight,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.2),
+                        ),
                       ),
                       child: Text(
                         'MÃ TIẾP ĐÓN: $codeDisplay',
@@ -1269,16 +1442,30 @@ class HistoryScreen extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    _buildModalCheckRow(Icons.person_rounded, 'Họ và tên:', patientName, isBold: true),
+                    _buildModalCheckRow(
+                      Icons.person_rounded,
+                      'Họ và tên:',
+                      patientName,
+                      isBold: true,
+                    ),
                     const Divider(height: 12),
-                    _buildModalCheckRow(Icons.cake_rounded, 'Ngày sinh:', dobText),
+                    _buildModalCheckRow(
+                      Icons.cake_rounded,
+                      'Ngày sinh:',
+                      dobText,
+                    ),
                     const Divider(height: 12),
-                    _buildModalCheckRow(Icons.medical_services_rounded, 'Chuyên khoa:', appointment.serviceTypeName),
+                    _buildModalCheckRow(
+                      Icons.medical_services_rounded,
+                      'Chuyên khoa:',
+                      appointment.serviceTypeName,
+                    ),
                     const Divider(height: 12),
                     _buildModalCheckRow(
                       Icons.access_time_rounded,
                       'Giờ hẹn:',
-                      DateFormat('HH:mm - dd/MM/yyyy').format(appointment.scheduledTime),
+                      DateFormat('HH:mm - dd/MM/yyyy')
+                          .format(appointment.scheduledTime),
                     ),
                   ],
                 ),
@@ -1288,20 +1475,33 @@ class HistoryScreen extends StatelessWidget {
 
               // Cảnh báo lâm sàng
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.warningLight,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: AppColors.warning.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.info_outline_rounded, size: 16, color: AppColors.warning),
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 16,
+                      color: AppColors.warning,
+                    ),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Bác sĩ sẽ hỏi đối chiếu Họ tên & Ngày sinh để bảo đảm an toàn hồ sơ bệnh án, phòng ngừa trùng tên.',
-                        style: TextStyle(fontSize: 11, color: AppColors.warning, height: 1.3),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.warning,
+                          height: 1.3,
+                        ),
                       ),
                     ),
                   ],
@@ -1318,10 +1518,15 @@ class HistoryScreen extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     elevation: 0,
                   ),
-                  child: const Text('Đã hiểu & Đóng', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  child: const Text(
+                    'Đã hiểu & Đóng',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
                 ),
               ),
             ],
@@ -1331,14 +1536,23 @@ class HistoryScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildModalCheckRow(IconData icon, String label, String value, {bool isBold = false}) {
+  Widget _buildModalCheckRow(
+    IconData icon,
+    String label,
+    String value, {
+    bool isBold = false,
+  }) {
     return Row(
       children: [
         Icon(icon, size: 15, color: AppColors.primary),
         const SizedBox(width: 8),
         Text(
           label,
-          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         const Spacer(),
         Text(
@@ -1371,12 +1585,31 @@ class _QrMatrixPainter extends CustomPainter {
     // Vẽ 3 mắt định vị góc QR (Corner Eyes)
     void drawCornerPattern(double startX, double startY) {
       // Khung ngoài 7x7
-      canvas.drawRect(Rect.fromLTWH(startX, startY, cellSize * 7, cellSize * 7), paint);
+      canvas.drawRect(
+        Rect.fromLTWH(startX, startY, cellSize * 7, cellSize * 7),
+        paint,
+      );
       // Vùng trắng giữa 5x5
       final whitePaint = Paint()..color = Colors.white;
-      canvas.drawRect(Rect.fromLTWH(startX + cellSize, startY + cellSize, cellSize * 5, cellSize * 5), whitePaint);
+      canvas.drawRect(
+        Rect.fromLTWH(
+          startX + cellSize,
+          startY + cellSize,
+          cellSize * 5,
+          cellSize * 5,
+        ),
+        whitePaint,
+      );
       // Tâm đen 3x3
-      canvas.drawRect(Rect.fromLTWH(startX + cellSize * 2, startY + cellSize * 2, cellSize * 3, cellSize * 3), paint);
+      canvas.drawRect(
+        Rect.fromLTWH(
+          startX + cellSize * 2,
+          startY + cellSize * 2,
+          cellSize * 3,
+          cellSize * 3,
+        ),
+        paint,
+      );
     }
 
     drawCornerPattern(0, 0); // Top-left
@@ -1388,7 +1621,9 @@ class _QrMatrixPainter extends CustomPainter {
     for (int r = 0; r < gridSize; r++) {
       for (int c = 0; c < gridSize; c++) {
         // Bỏ qua vùng 3 mắt định vị
-        if ((r < 8 && c < 8) || (r < 8 && c >= gridSize - 8) || (r >= gridSize - 8 && c < 8)) {
+        if ((r < 8 && c < 8) ||
+            (r < 8 && c >= gridSize - 8) ||
+            (r >= gridSize - 8 && c < 8)) {
           continue;
         }
         // Dải đồng bộ timing
@@ -1396,7 +1631,12 @@ class _QrMatrixPainter extends CustomPainter {
           if ((r + c) % 2 == 0) {
             canvas.drawRRect(
               RRect.fromRectAndRadius(
-                Rect.fromLTWH(c * cellSize + 0.5, r * cellSize + 0.5, cellSize - 1, cellSize - 1),
+                Rect.fromLTWH(
+                  c * cellSize + 0.5,
+                  r * cellSize + 0.5,
+                  cellSize - 1,
+                  cellSize - 1,
+                ),
                 const Radius.circular(1),
               ),
               paint,
@@ -1409,7 +1649,12 @@ class _QrMatrixPainter extends CustomPainter {
         if (hash % 3 == 0) {
           canvas.drawRRect(
             RRect.fromRectAndRadius(
-              Rect.fromLTWH(c * cellSize + 0.5, r * cellSize + 0.5, cellSize - 1, cellSize - 1),
+              Rect.fromLTWH(
+                c * cellSize + 0.5,
+                r * cellSize + 0.5,
+                cellSize - 1,
+                cellSize - 1,
+              ),
               const Radius.circular(1.5),
             ),
             paint,
@@ -1420,5 +1665,6 @@ class _QrMatrixPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _QrMatrixPainter oldDelegate) => oldDelegate.seed != seed;
+  bool shouldRepaint(covariant _QrMatrixPainter oldDelegate) =>
+      oldDelegate.seed != seed;
 }

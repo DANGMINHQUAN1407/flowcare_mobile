@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../core/theme/app_colors.dart';
 import '../providers/booking_provider.dart';
 import '../providers/history_provider.dart';
@@ -14,16 +15,14 @@ import 'route/route_screen.dart';
 class MainShellScreen extends StatefulWidget {
   final int initialTabIndex;
 
-  const MainShellScreen({
-    super.key,
-    this.initialTabIndex = 0,
-  });
+  const MainShellScreen({super.key, this.initialTabIndex = 0});
 
   @override
   State<MainShellScreen> createState() => _MainShellScreenState();
 }
 
-class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingObserver {
+class _MainShellScreenState extends State<MainShellScreen>
+    with WidgetsBindingObserver {
   late int _currentIndex;
   HomeProvider? _homeProvider;
 
@@ -44,7 +43,8 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
     if (state == AppLifecycleState.resumed) {
       home.startUpdates();
       home.loadHomeData(isRefresh: true);
-    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
       home.stopUpdates();
     }
   }
@@ -64,17 +64,26 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
       final homeProvider = Provider.of<HomeProvider>(context, listen: false);
 
       if (index == 1) {
-        final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
+        final bookingProvider = Provider.of<BookingProvider>(
+          context,
+          listen: false,
+        );
         bookingProvider.initBooking(homeProvider.currentPhone);
       } else if (index == 3) {
-        final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
+        final historyProvider = Provider.of<HistoryProvider>(
+          context,
+          listen: false,
+        );
         historyProvider.loadAppointments(
-          homeProvider.patient?.id,
+          homeProvider.patientId,
           phone: homeProvider.currentPhone,
           patientName: homeProvider.patient?.fullName,
         );
       } else if (index == 4) {
-        final profileProvider = Provider.of<ProfileProvider>(context, listen: false);
+        final profileProvider = Provider.of<ProfileProvider>(
+          context,
+          listen: false,
+        );
         profileProvider.loadProfile(homeProvider.currentPhone);
       }
     }
@@ -91,19 +100,11 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
     ];
 
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: screens,
-      ),
+      body: IndexedStack(index: _currentIndex, children: screens),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: AppColors.surface,
-          border: Border(
-            top: BorderSide(
-              color: AppColors.border,
-              width: 1,
-            ),
-          ),
+          border: Border(top: BorderSide(color: AppColors.border, width: 1)),
         ),
         child: NavigationBar(
           selectedIndex: _currentIndex,
@@ -120,23 +121,47 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
               label: 'Trang chủ',
             ),
             NavigationDestination(
-              icon: Icon(Icons.calendar_month_outlined, color: AppColors.textSecondary),
-              selectedIcon: Icon(Icons.calendar_month_rounded, color: AppColors.primary),
+              icon: Icon(
+                Icons.calendar_month_outlined,
+                color: AppColors.textSecondary,
+              ),
+              selectedIcon: Icon(
+                Icons.calendar_month_rounded,
+                color: AppColors.primary,
+              ),
               label: 'Đặt lịch',
             ),
             NavigationDestination(
-              icon: Icon(Icons.alt_route_outlined, color: AppColors.textSecondary),
-              selectedIcon: Icon(Icons.alt_route_rounded, color: AppColors.primary),
+              icon: Icon(
+                Icons.alt_route_outlined,
+                color: AppColors.textSecondary,
+              ),
+              selectedIcon: Icon(
+                Icons.alt_route_rounded,
+                color: AppColors.primary,
+              ),
               label: 'Lộ trình',
             ),
             NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined, color: AppColors.textSecondary),
-              selectedIcon: Icon(Icons.receipt_long_rounded, color: AppColors.primary),
+              icon: Icon(
+                Icons.receipt_long_outlined,
+                color: AppColors.textSecondary,
+              ),
+              selectedIcon: Icon(
+                Icons.receipt_long_rounded,
+                color: AppColors.primary,
+              ),
               label: 'Lịch sử',
             ),
             NavigationDestination(
-              icon: Icon(Icons.person_outline_rounded, color: AppColors.textSecondary),
-              selectedIcon: Icon(Icons.person_rounded, color: AppColors.primary),
+              icon: Icon(
+                Icons.person_outline_rounded,
+                color: AppColors.textSecondary,
+              ),
+              selectedIcon: Icon(
+                Icons.person_rounded,
+                color: AppColors.primary,
+              ),
               label: 'Hồ sơ',
             ),
           ],

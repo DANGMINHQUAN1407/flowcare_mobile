@@ -3,6 +3,7 @@ class ParaclinicalPlanModel {
   final String encounterId;
   final String status;
   final String source;
+  final String? mode;
   final String nextAfterPlan;
   final List<ParaclinicalStepModel> steps;
   final double? estimatedTotalMinutes;
@@ -13,6 +14,7 @@ class ParaclinicalPlanModel {
     required this.encounterId,
     required this.status,
     required this.source,
+    this.mode,
     required this.nextAfterPlan,
     required this.steps,
     this.estimatedTotalMinutes,
@@ -22,6 +24,7 @@ class ParaclinicalPlanModel {
   bool get isProposed => status.toLowerCase() == 'proposed';
   bool get isCompleted => status.toLowerCase() == 'completed';
   bool get isDoctorOrdered => source.toLowerCase() == 'medicalorders';
+  bool get followsOriginalOrder => mode == 'OriginalOrder';
 
   factory ParaclinicalPlanModel.fromJson(Map<String, dynamic> json) {
     final steps =
@@ -35,6 +38,7 @@ class ParaclinicalPlanModel {
       encounterId: json['encounterId']?.toString() ?? '',
       status: json['status']?.toString() ?? '',
       source: json['source']?.toString() ?? '',
+      mode: json['mode']?.toString(),
       nextAfterPlan: json['nextAfterPlan']?.toString() ?? '',
       estimatedTotalMinutes: readMinutes(json['estimatedTotalMinutes']),
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
@@ -60,6 +64,9 @@ class ParaclinicalStepModel {
   final DateTime? actualStartTime;
   final DateTime? actualEndTime;
   final DateTime? resultReadyTime;
+  final bool? isResultFinalized;
+  final bool? requiresFinalizedResult;
+  final DateTime? resultFinalizedAt;
   final DateTime? enqueuedAt;
   final double? estimatedTravelMinutes;
   final double? estimatedDurationMinutes;
@@ -82,6 +89,9 @@ class ParaclinicalStepModel {
     this.actualStartTime,
     this.actualEndTime,
     this.resultReadyTime,
+    this.isResultFinalized,
+    this.requiresFinalizedResult,
+    this.resultFinalizedAt,
     this.enqueuedAt,
     this.estimatedTravelMinutes,
     this.estimatedDurationMinutes,
@@ -89,8 +99,14 @@ class ParaclinicalStepModel {
   });
 
   bool get isCompleted => status.toLowerCase() == 'completed';
+  bool get hasPublishedResult =>
+      isCompleted &&
+      (isResultFinalized == true ||
+          (requiresFinalizedResult == false && resultReadyTime != null));
   bool get isSkipped => status.toLowerCase() == 'skipped';
-  bool get isResolved => isCompleted || isSkipped;
+  bool get isResolved => hasPublishedResult || isSkipped;
+  DateTime? get publishedResultAt =>
+      hasPublishedResult ? resultFinalizedAt ?? resultReadyTime : null;
 
   String get location => [
     if (roomName.isNotEmpty) roomName,
@@ -125,6 +141,15 @@ class ParaclinicalStepModel {
     actualEndTime: DateTime.tryParse(json['actualEndTime']?.toString() ?? ''),
     resultReadyTime: DateTime.tryParse(
       json['resultReadyTime']?.toString() ?? '',
+    ),
+    isResultFinalized: json['isResultFinalized'] is bool
+        ? json['isResultFinalized'] as bool
+        : null,
+    requiresFinalizedResult: json['requiresFinalizedResult'] is bool
+        ? json['requiresFinalizedResult'] as bool
+        : null,
+    resultFinalizedAt: DateTime.tryParse(
+      json['resultFinalizedAt']?.toString() ?? '',
     ),
     enqueuedAt: DateTime.tryParse(json['enqueuedAt']?.toString() ?? ''),
     estimatedTravelMinutes: readMinutes(json['estimatedTravelMinutes']),

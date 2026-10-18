@@ -16,6 +16,8 @@ class JourneyStep {
   final DateTime? estimatedStartTime;
   final bool isService;
   final JourneyStepTiming? timing;
+  final bool isInProgress;
+  final bool isWaitingForResult;
 
   const JourneyStep({
     required this.id,
@@ -29,6 +31,8 @@ class JourneyStep {
     this.estimatedStartTime,
     this.isService = false,
     this.timing,
+    this.isInProgress = false,
+    this.isWaitingForResult = false,
   });
 }
 
@@ -53,6 +57,11 @@ class PatientJourney {
       .length;
   JourneyStep? get currentStep {
     if (isFinalized) return null;
+    for (final step in steps) {
+      if (step.state == JourneyStepState.current && step.isInProgress) {
+        return step;
+      }
+    }
     for (final step in steps) {
       if (step.state == JourneyStepState.current) return step;
     }
@@ -88,6 +97,21 @@ class PatientJourney {
       if (summary.roomName?.trim().isNotEmpty == true) summary.roomName!,
       if (summary.doctorName?.trim().isNotEmpty == true) summary.doctorName!,
     ].join(' · ');
+    final nursing = summary.nursingIntake;
+    final nursingComplete = nursing?.isComplete == true;
+    // Queue progress is not proof that the two nursing records were saved.
+    // An older/incomplete record remains visible without sending the patient
+    // backwards once the consultation or doctor-ordered services have begun.
+    final beyondNursing =
+        finalized ||
+        doctorOrdered ||
+        const {'inprogress', 'done'}.contains(queue);
+    final nursingCurrent =
+        checkedIn &&
+        !beyondNursing &&
+        !nursingComplete &&
+        !preExamUnresolved &&
+        (plan == null || servicesResolved);
     final steps = <JourneyStep>[
       JourneyStep(
         id: 'reception',
@@ -101,14 +125,44 @@ class PatientJourney {
       ),
     ];
 
+    JourneyStep nursingIntake() => JourneyStep(
+      id: 'nursing-intake',
+      title: 'Điều dưỡng tiếp nhận & đo sinh hiệu',
+      location: summary.roomName?.trim() ?? '',
+      statusLabel: nursingComplete
+          ? 'Đã ghi nhận đủ thông tin'
+          : nursing == null
+          ? 'Chưa có cập nhật điều dưỡng'
+          : beyondNursing
+          ? 'Chưa đủ ghi nhận điều dưỡng'
+          : nursing.hasStarted
+          ? 'Đang tiếp nhận điều dưỡng'
+          : queue == 'called'
+          ? 'Đã gọi — mời đến điều dưỡng'
+          : 'Chờ điều dưỡng tiếp nhận',
+      state: nursingComplete
+          ? JourneyStepState.completed
+          : nursingCurrent
+          ? JourneyStepState.current
+          : JourneyStepState.pending,
+      instruction: nursing == null
+          ? 'Chưa nhận được trạng thái khai báo và sinh hiệu từ bệnh viện.'
+          : 'Khai báo sản phụ khoa: ${nursing.hasIntake ? 'Đã lưu' : 'Chưa ghi nhận'}.\n'
+                'Sinh hiệu: ${nursing.hasVitalSigns ? 'Đã ghi nhận' : 'Chưa ghi nhận'}.',
+      completedAt: nursing?.completedAt,
+      queueNumber: nursingCurrent ? summary.queueNumber : null,
+      isInProgress: nursingCurrent && nursing?.hasStarted == true,
+    );
+
     JourneyStep consultation({bool beforeServices = false}) {
       final completed = finalized || beforeServices || queue == 'done';
       final blockedByServices =
           !beforeServices &&
           ((plan != null && !servicesResolved) || preExamUnresolved);
+      final blockedByNursing = nursingCurrent;
       final state = completed
           ? JourneyStepState.completed
-          : !checkedIn || blockedByServices
+          : !checkedIn || blockedByServices || blockedByNursing
           ? JourneyStepState.pending
           : JourneyStepState.current;
       return JourneyStep(
@@ -119,6 +173,8 @@ class PatientJourney {
             ? 'Đã khám'
             : blockedByServices
             ? 'Sau cận lâm sàng'
+            : blockedByNursing
+            ? 'Sau tiếp nhận điều dưỡng'
             : queue == 'inprogress'
             ? 'Đang khám'
             : queue == 'called'
@@ -130,15 +186,24 @@ class PatientJourney {
             : 'Chờ tiếp đón',
         state: state,
         queueNumber: completed ? null : summary.queueNumber,
+        isInProgress: !completed && queue == 'inprogress',
       );
     }
 
-    if (doctorOrdered) steps.add(consultation(beforeServices: true));
+    if (doctorOrdered) {
+      steps.add(nursingIntake());
+      steps.add(consultation(beforeServices: true));
+    }
     if (plan != null) {
       for (final service in plan.steps) {
         final status = service.status.toLowerCase();
-        final waiting = status == 'waitingresult' || service.isHeldForResult;
-        final state = service.isCompleted
+        final awaitingPublication =
+            service.isCompleted && !service.hasPublishedResult;
+        final waiting =
+            status == 'waitingresult' ||
+            service.isHeldForResult ||
+            awaitingPublication;
+        final state = service.hasPublishedResult
             ? JourneyStepState.completed
             : service.isSkipped
             ? JourneyStepState.skipped
@@ -153,12 +218,16 @@ class PatientJourney {
             id: service.id,
             title: service.serviceTypeName,
             location: service.location,
-            statusLabel: service.isCompleted
+            statusLabel: service.hasPublishedResult
                 ? 'Đã có kết quả'
                 : service.isSkipped
                 ? 'Đã bỏ qua'
                 : plan.isProposed
                 ? 'Chờ duyệt lộ trình'
+                : awaitingPublication
+                ? service.isResultFinalized == false
+                      ? 'Đã thực hiện · Chờ chốt kết quả'
+                      : 'Đã thực hiện · Chưa xác nhận kết quả'
                 : service.isHeldForResult
                 ? 'Chờ kết quả bước trước'
                 : status == 'waitingresult'
@@ -175,15 +244,21 @@ class PatientJourney {
                     const {'inqueue', 'inprogress'}.contains(status)
                 ? service.queueNumber
                 : null,
-            instruction: service.isSkipped
+            instruction: awaitingPublication
+                ? 'Dịch vụ đã thực hiện. Phiếu kết quả cần được nhập đầy đủ và chốt trước khi thông báo đã có kết quả.'
+                : service.isSkipped
                 ? service.skipReason
                 : service.isHeldForResult && service.waitsForResultOf.isNotEmpty
                 ? 'Chờ kết quả: ${service.waitsForResultOf.join(', ')}.'
                 : service.instruction,
-            completedAt: service.resultReadyTime,
+            completedAt: service.hasPublishedResult
+                ? service.resultFinalizedAt ?? service.resultReadyTime
+                : null,
             estimatedStartTime: service.estimatedStartTime,
             isService: true,
             timing: timing?.steps[service.id],
+            isInProgress: !plan.isProposed && status == 'inprogress',
+            isWaitingForResult: waiting,
           ),
         );
       }
@@ -211,11 +286,15 @@ class PatientJourney {
                 : JourneyStepState.pending,
             completedAt: order.completedAt,
             isService: true,
+            isInProgress: status == 'inprogress',
           ),
         );
       }
     }
-    if (!doctorOrdered) steps.add(consultation());
+    if (!doctorOrdered) {
+      steps.add(nursingIntake());
+      steps.add(consultation());
+    }
     final readyForConclusion = doctorOrdered
         ? servicesResolved
         : queue == 'done';
