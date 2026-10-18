@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/patient_model.dart';
-import '../../providers/booking_provider.dart';
-import '../../providers/history_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/patient_session_service.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/profile_provider.dart';
 
@@ -33,11 +34,18 @@ class ProfileScreen extends StatelessWidget {
                   }
                 },
               ),
-              if (patient != null || phone.isNotEmpty)
+              if (PatientSessionService().isAuthenticated)
                 IconButton(
-                  icon: const Icon(Icons.logout_rounded, color: AppColors.emergency),
+                  icon: const Icon(
+                    Icons.logout_rounded,
+                    color: AppColors.emergency,
+                  ),
                   tooltip: 'Đăng xuất hồ sơ',
-                  onPressed: () => _showLogoutConfirmationDialog(context, homeProvider, profileProvider),
+                  onPressed: () => _showLogoutConfirmationDialog(
+                    context,
+                    homeProvider,
+                    profileProvider,
+                  ),
                 ),
             ],
           ),
@@ -57,54 +65,62 @@ class ProfileScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Profile Header Card
-                    _buildProfileHeaderCard(context, homeProvider, profileProvider, patient, phone),
-
-                    const SizedBox(height: 20),
-
-                    // Section 1: 👤 Thông tin cá nhân
-                    _buildSectionHeader(
-                      icon: Icons.badge_outlined,
-                      title: '1. Thông tin định danh cá nhân',
-                      subtitle: 'Thông tin hành chính bệnh nhân trên hệ thống EMR',
+                    _buildProfileHeaderCard(
+                      context,
+                      homeProvider,
+                      profileProvider,
+                      patient,
+                      phone,
                     ),
-                    const SizedBox(height: 10),
-                    _buildPersonalSection(patient, phone),
 
                     const SizedBox(height: 20),
 
-                    // Section 2: 🩸 Thông tin y tế & Nhóm máu
-                    _buildSectionHeader(
-                      icon: Icons.bloodtype_outlined,
-                      title: '2. Thông tin y tế & Nhóm máu',
-                      subtitle: 'Chỉ số an toàn y khoa và tiền sử dị ứng',
-                    ),
-                    const SizedBox(height: 10),
-                    _buildMedicalSection(patient),
+                    if (patient != null) ...[
+                      // Section 1: 👤 Thông tin cá nhân
+                      _buildSectionHeader(
+                        icon: Icons.badge_outlined,
+                        title: '1. Thông tin định danh cá nhân',
+                        subtitle:
+                            'Thông tin hành chính bệnh nhân trên hệ thống EMR',
+                      ),
+                      const SizedBox(height: 10),
+                      _buildPersonalSection(patient, phone),
 
-                    const SizedBox(height: 20),
+                      const SizedBox(height: 20),
 
-                    // Section 3: 🤰 Hồ sơ thai sản & Tiền sử sản khoa
-                    _buildSectionHeader(
-                      icon: Icons.pregnant_woman_rounded,
-                      title: '3. Hồ sơ thai sản & Tiền sử sản khoa',
-                      subtitle: 'Chỉ số PARA và theo dõi thai sản mẹ bé',
-                    ),
-                    const SizedBox(height: 10),
-                    _buildObstetricSection(patient),
+                      // Section 2: 🩸 Thông tin y tế & Nhóm máu
+                      _buildSectionHeader(
+                        icon: Icons.bloodtype_outlined,
+                        title: '2. Thông tin y tế & Nhóm máu',
+                        subtitle: 'Chỉ số an toàn y khoa và tiền sử dị ứng',
+                      ),
+                      const SizedBox(height: 10),
+                      _buildMedicalSection(patient),
 
-                    const SizedBox(height: 20),
+                      const SizedBox(height: 20),
 
-                    // Section 4: 🩺 Hồ sơ sức khỏe phụ khoa
-                    _buildSectionHeader(
-                      icon: Icons.spa_outlined,
-                      title: '4. Hồ sơ sức khỏe phụ khoa',
-                      subtitle: 'Chu kỳ kinh nguyệt và sức khỏe sinh sản',
-                    ),
-                    const SizedBox(height: 10),
-                    _buildGynecologySection(patient),
+                      // Section 3: 🤰 Hồ sơ thai sản & Tiền sử sản khoa
+                      _buildSectionHeader(
+                        icon: Icons.pregnant_woman_rounded,
+                        title: '3. Hồ sơ thai sản & Tiền sử sản khoa',
+                        subtitle: 'Chỉ số PARA và theo dõi thai sản mẹ bé',
+                      ),
+                      const SizedBox(height: 10),
+                      _buildObstetricSection(patient),
 
-                    const SizedBox(height: 20),
+                      const SizedBox(height: 20),
 
+                      // Section 4: 🩺 Hồ sơ sức khỏe phụ khoa
+                      _buildSectionHeader(
+                        icon: Icons.spa_outlined,
+                        title: '4. Hồ sơ sức khỏe phụ khoa',
+                        subtitle: 'Chu kỳ kinh nguyệt và sức khỏe sinh sản',
+                      ),
+                      const SizedBox(height: 10),
+                      _buildGynecologySection(patient),
+
+                      const SizedBox(height: 20),
+                    ],
                     // Section 5: Cài đặt & Hỗ trợ y tế
                     _buildSectionHeader(
                       icon: Icons.support_agent_rounded,
@@ -112,7 +128,12 @@ class ProfileScreen extends StatelessWidget {
                       subtitle: 'Tổng đài viện và tiêu chuẩn bảo mật dữ liệu',
                     ),
                     const SizedBox(height: 10),
-                    _buildSupportSection(context, homeProvider, profileProvider, phone),
+                    _buildSupportSection(
+                      context,
+                      homeProvider,
+                      profileProvider,
+                      phone,
+                    ),
 
                     const SizedBox(height: 30),
                   ],
@@ -125,7 +146,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // --- HEADER CARD ---
+  // The account is authenticated even if BE has not enabled profile reads yet.
   Widget _buildProfileHeaderCard(
     BuildContext context,
     HomeProvider homeProvider,
@@ -133,197 +154,42 @@ class ProfileScreen extends StatelessWidget {
     PatientModel? patient,
     String phone,
   ) {
-    final hasPatient = patient != null;
-    final isLoggedOut = phone.isEmpty;
-
-    if (isLoggedOut) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: const Icon(
-                    Icons.person_outline_rounded,
-                    size: 32,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Chưa đăng nhập hồ sơ',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Nhập SĐT để tra cứu lịch hẹn & hồ sơ EMR',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              height: 40,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                icon: const Icon(Icons.phone_android_rounded, size: 16),
-                label: const Text('Đăng nhập / Tra cứu bằng SĐT', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                onPressed: () => _showSwitchPhoneDialog(context, homeProvider, profileProvider, ''),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final fullName = hasPatient
-        ? patient.fullName
-        : 'Bệnh nhân ($phone)';
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF005BAC), Color(0xFF0077C8)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.25),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.female_rounded,
-              size: 36,
-              color: Colors.white,
-            ),
+          Text(
+            patient?.fullName ?? PatientSessionService().userName,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  fullName,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryLight,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        hasPatient && patient.id.length >= 8
-                            ? 'PID: ${patient.id.substring(0, 8).toUpperCase()}'
-                            : 'PID: FlowCare',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: hasPatient ? AppColors.successLight : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        hasPatient ? '• Đã kết nối EMR' : '• Khách vãng lai',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: hasPatient ? AppColors.success : AppColors.textTertiary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'SĐT: $phone',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
+          const SizedBox(height: 6),
+          Text(
+            PatientSessionService().isDemo
+                ? 'Phiên chỉ xem'
+                : 'Tài khoản bệnh nhân đã đăng nhập',
           ),
+          if (patient != null && phone.isNotEmpty) Text('SĐT: $phone'),
+          if (profileProvider.isLoading)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: LinearProgressIndicator(),
+            ),
+          if (profileProvider.errorMessage != null ||
+              homeProvider.patient == null) ...[
+            const SizedBox(height: 12),
+            Text(
+              profileProvider.errorMessage ??
+                  'Chưa tải được hồ sơ sức khỏe. Hãy thử làm mới.',
+              style: const TextStyle(color: AppColors.emergency),
+            ),
+          ],
         ],
       ),
     );
@@ -379,15 +245,24 @@ class ProfileScreen extends StatelessWidget {
         children: [
           _buildInfoRow('Họ và tên:', patient?.fullName ?? 'Chưa cập nhật'),
           const Divider(height: 16),
-          _buildInfoRow('Số điện thoại:', phone.isNotEmpty ? phone : (patient?.phone ?? 'Chưa có')),
+          _buildInfoRow(
+            'Số điện thoại:',
+            phone.isNotEmpty ? phone : (patient?.phone ?? 'Chưa có'),
+          ),
           const Divider(height: 16),
           _buildInfoRow('Ngày sinh (DOB):', patient?.dob ?? 'Chưa cập nhật'),
           const Divider(height: 16),
           _buildInfoRow('Giới tính:', 'Nữ (Mẹ & Bé)'),
           const Divider(height: 16),
-          _buildInfoRow('Mã định danh (CCCD):', patient?.nationalId ?? 'Chưa cập nhật'),
+          _buildInfoRow(
+            'Mã định danh (CCCD):',
+            patient?.nationalId ?? 'Chưa cập nhật',
+          ),
           const Divider(height: 16),
-          _buildInfoRow('Địa chỉ thường trú:', patient?.address ?? 'Chưa cập nhật'),
+          _buildInfoRow(
+            'Địa chỉ thường trú:',
+            patient?.address ?? 'Chưa cập nhật',
+          ),
         ],
       ),
     );
@@ -395,7 +270,8 @@ class ProfileScreen extends StatelessWidget {
 
   // --- 2. MEDICAL & BLOOD SECTION ---
   Widget _buildMedicalSection(PatientModel? patient) {
-    final bloodStr = (patient?.bloodGroup != null && patient!.bloodGroup!.isNotEmpty)
+    final bloodStr =
+        (patient?.bloodGroup != null && patient!.bloodGroup!.isNotEmpty)
         ? '${patient.bloodGroup} (Rh${patient.rhFactor ?? "+"})'
         : 'Chưa xét nghiệm';
 
@@ -412,14 +288,19 @@ class ProfileScreen extends StatelessWidget {
           _buildInfoRow(
             'Nhóm máu & Yếu tố Rh:',
             bloodStr,
-            valueColor: patient?.bloodGroup != null ? AppColors.secondary : null,
+            valueColor: patient?.bloodGroup != null
+                ? AppColors.secondary
+                : null,
             isBold: true,
           ),
           const Divider(height: 16),
           _buildInfoRow(
             'Tiền sử dị ứng:',
             patient?.allergies ?? 'Không ghi nhận dị ứng thuốc/thực phẩm',
-            valueColor: (patient?.allergies != null && patient!.allergies != 'Không có') ? AppColors.emergency : null,
+            valueColor:
+                (patient?.allergies != null && patient!.allergies != 'Không có')
+                ? AppColors.emergency
+                : null,
           ),
           const Divider(height: 16),
           _buildInfoRow(
@@ -434,7 +315,9 @@ class ProfileScreen extends StatelessWidget {
   // --- 3. OBSTETRIC SECTION ---
   Widget _buildObstetricSection(PatientModel? patient) {
     final bmi = patient?.prePregnancyBmi;
-    final bmiText = bmi != null ? '${bmi.toStringAsFixed(1)} kg/m² (${patient!.bmiCategory})' : 'Chưa có dữ liệu';
+    final bmiText = bmi != null
+        ? '${bmi.toStringAsFixed(1)} kg/m² (${patient!.bmiCategory})'
+        : 'Chưa có dữ liệu';
 
     return Container(
       width: double.infinity,
@@ -442,7 +325,9 @@ class ProfileScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.maternityPink.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: AppColors.maternityPink.withValues(alpha: 0.3),
+        ),
       ),
       child: Column(
         children: [
@@ -458,18 +343,31 @@ class ProfileScreen extends StatelessWidget {
             patient?.gestationalWeeks != null
                 ? 'Tuần ${patient!.gestationalWeeks} + ${patient.gestationalDays ?? 0} ngày'
                 : 'Chưa có dữ liệu thai kỳ',
-            valueColor: patient?.gestationalWeeks != null ? AppColors.primary : null,
+            valueColor: patient?.gestationalWeeks != null
+                ? AppColors.primary
+                : null,
           ),
           const Divider(height: 16),
           _buildInfoRow('Ngày dự sinh (EDD):', patient?.edd ?? 'Chưa xác định'),
           const Divider(height: 16),
           _buildInfoRow('Kỳ kinh cuối (LMP):', patient?.lmp ?? 'Chưa ghi nhận'),
           const Divider(height: 16),
-          _buildInfoRow('Tiền sử sản khoa:', patient?.obstetricHistory ?? 'Chưa ghi nhận tiền sử bất thường'),
+          _buildInfoRow(
+            'Tiền sử sản khoa:',
+            patient?.obstetricHistory ?? 'Chưa ghi nhận tiền sử bất thường',
+          ),
           const Divider(height: 16),
-          _buildInfoRow('Chiều cao:', patient?.heightCm != null ? '${patient!.heightCm} cm' : 'Chưa đo'),
+          _buildInfoRow(
+            'Chiều cao:',
+            patient?.heightCm != null ? '${patient!.heightCm} cm' : 'Chưa đo',
+          ),
           const Divider(height: 16),
-          _buildInfoRow('Cân nặng tiền thai kỳ:', patient?.prePregnancyWeight != null ? '${patient!.prePregnancyWeight} kg' : 'Chưa đo'),
+          _buildInfoRow(
+            'Cân nặng tiền thai kỳ:',
+            patient?.prePregnancyWeight != null
+                ? '${patient!.prePregnancyWeight} kg'
+                : 'Chưa đo',
+          ),
           const Divider(height: 16),
           _buildInfoRow('Chỉ số BMI tiền mang thai:', bmiText),
         ],
@@ -489,38 +387,45 @@ class ProfileScreen extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _buildInfoRow('Chu kỳ kinh nguyệt:', patient?.menstrualCycle ?? '28 - 30 ngày (Bình thường)'),
+          _buildInfoRow(
+            'Chu kỳ kinh nguyệt:',
+            patient?.menstrualCycle ?? '28 - 30 ngày (Bình thường)',
+          ),
           const Divider(height: 16),
-          _buildInfoRow('Biện pháp tránh thai:', patient?.contraceptiveMethod ?? 'Không áp dụng'),
+          _buildInfoRow(
+            'Biện pháp tránh thai:',
+            patient?.contraceptiveMethod ?? 'Không áp dụng',
+          ),
           const Divider(height: 16),
-          _buildInfoRow('Tầm soát ung thư CTC:', 'Khuyến cáo thực hiện định kỳ hàng năm'),
+          _buildInfoRow(
+            'Tầm soát ung thư CTC:',
+            'Khuyến cáo thực hiện định kỳ hàng năm',
+          ),
         ],
       ),
     );
   }
 
   // --- 5. SUPPORT & SECURITY SECTION ---
-  Widget _buildSupportSection(BuildContext context, HomeProvider homeProvider, ProfileProvider profileProvider, String phone) {
+  Widget _buildSupportSection(
+    BuildContext context,
+    HomeProvider homeProvider,
+    ProfileProvider profileProvider,
+    String phone,
+  ) {
     return Column(
       children: [
         _buildActionTile(
-          icon: Icons.switch_account_rounded,
-          title: 'Đổi số điện thoại / Tra cứu hồ sơ khác',
-          subtitle: phone.isNotEmpty ? 'Hiện tại: $phone' : 'Nhập số điện thoại để đồng bộ hồ sơ',
-          iconColor: AppColors.secondary,
-          iconBgColor: AppColors.secondaryLight,
-          onTap: () => _showSwitchPhoneDialog(context, homeProvider, profileProvider, phone),
-        ),
-        if (homeProvider.patient != null || profileProvider.patient != null || phone.isNotEmpty)
-          _buildActionTile(
-            icon: Icons.logout_rounded,
-            title: 'Đăng xuất hồ sơ hiện tại',
-            subtitle: 'Xóa phiên bệnh nhân ${profileProvider.patient?.fullName ?? homeProvider.patient?.fullName ?? phone} khỏi máy',
-            iconColor: AppColors.emergency,
-            iconBgColor: AppColors.emergencyLight,
-            isDestructive: true,
-            onTap: () => _showLogoutConfirmationDialog(context, homeProvider, profileProvider),
+          icon: Icons.logout_rounded,
+          title: 'Đăng xuất tài khoản',
+          subtitle: 'Xóa phiên đăng nhập và dữ liệu đang xem trên thiết bị',
+          isDestructive: true,
+          onTap: () => _showLogoutConfirmationDialog(
+            context,
+            homeProvider,
+            profileProvider,
           ),
+        ),
         _buildActionTile(
           icon: Icons.headset_mic_outlined,
           title: 'Tổng đài cấp cứu & Chăm sóc sản khoa',
@@ -528,7 +433,9 @@ class ProfileScreen extends StatelessWidget {
           onTap: () {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Tổng đài hỗ trợ cấp cứu & tư vấn thai sản: 1900 6868'),
+                content: Text(
+                  'Tổng đài hỗ trợ cấp cứu & tư vấn thai sản: 1900 6868',
+                ),
               ),
             );
           },
@@ -555,77 +462,11 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  void _showSwitchPhoneDialog(BuildContext context, HomeProvider homeProvider, ProfileProvider profileProvider, String currentPhone) {
-    final textController = TextEditingController(text: currentPhone);
-
-    showDialog(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.phone_android_rounded, color: AppColors.primary),
-            SizedBox(width: 8),
-            Text('Đổi số điện thoại', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Nhập số điện thoại bệnh nhân để tra cứu và đồng bộ hồ sơ sản phụ khoa:',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: textController,
-              keyboardType: TextInputType.phone,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: 'Ví dụ: 0988111222',
-                prefixIcon: const Icon(Icons.phone_outlined, size: 20),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Hủy', style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () async {
-              final newPhone = textController.text.trim();
-              Navigator.pop(dialogCtx);
-              if (newPhone.isNotEmpty) {
-                homeProvider.switchPhone(newPhone);
-                await profileProvider.loadProfile(newPhone, isRefresh: true);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Đang tải hồ sơ cho số điện thoại: $newPhone'),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Đồng bộ'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showLogoutConfirmationDialog(BuildContext context, HomeProvider homeProvider, ProfileProvider profileProvider) {
+  void _showLogoutConfirmationDialog(
+    BuildContext context,
+    HomeProvider homeProvider,
+    ProfileProvider profileProvider,
+  ) {
     showDialog(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -634,7 +475,10 @@ class ProfileScreen extends StatelessWidget {
           children: [
             Icon(Icons.logout_rounded, color: AppColors.emergency),
             SizedBox(width: 8),
-            Text('Đăng xuất hồ sơ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            Text(
+              'Đăng xuất hồ sơ',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
           ],
         ),
         content: const Text(
@@ -644,27 +488,22 @@ class ProfileScreen extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Hủy', style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Hủy',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.emergency,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             onPressed: () {
               Navigator.pop(dialogCtx);
-              homeProvider.logout();
-              profileProvider.logout();
-              Provider.of<BookingProvider>(context, listen: false).logout();
-              Provider.of<HistoryProvider>(context, listen: false).logout();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Đã đăng xuất hồ sơ bệnh nhân thành công.'),
-                  backgroundColor: AppColors.textPrimary,
-                  duration: Duration(seconds: 2),
-                ),
-              );
+              context.read<AuthProvider>().logout();
             },
             child: const Text('Đăng xuất'),
           ),
@@ -673,17 +512,19 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoRow(String label, String value, {Color? valueColor, bool isBold = false}) {
+  Widget _buildInfoRow(
+    String label,
+    String value, {
+    Color? valueColor,
+    bool isBold = false,
+  }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-          ),
+          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -715,7 +556,11 @@ class ProfileScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: isDestructive ? AppColors.emergency.withValues(alpha: 0.3) : AppColors.border),
+        border: Border.all(
+          color: isDestructive
+              ? AppColors.emergency.withValues(alpha: 0.3)
+              : AppColors.border,
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -734,7 +579,9 @@ class ProfileScreen extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: isDestructive ? AppColors.emergency : AppColors.textPrimary,
+              color: isDestructive
+                  ? AppColors.emergency
+                  : AppColors.textPrimary,
             ),
           ),
           subtitle: Text(

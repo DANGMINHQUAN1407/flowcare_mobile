@@ -11,7 +11,8 @@ class ApiEndpoints {
   static const String appointmentSlots = '/appointments/slots';
   static const String appointmentCheck = '/appointments/check';
   static const String appointments = '/appointments';
-  static String appointmentByPatient(String patientId) => '/appointments/patient/$patientId';
+  static String appointmentByPatient(String patientId) =>
+      '/appointments/patient/$patientId';
 
   // Service Types (Backend Dependency: pending GET /api/v1/service-types)
   static const String serviceTypes = '/service-types';
@@ -23,25 +24,31 @@ class ApiEndpoints {
   // Encounters & Live Status
   static const String encounters = '/encounters';
   static String encounterStatus(String id) => '/encounters/$id/status';
-  static String activeEncounterByPatient(String patientId) => '/encounters/patient/$patientId/active';
-  static String encounterHistoryByPatient(String patientId) => '/encounters/patient/$patientId/history';
-  static String paraclinicalPlan(String encounterId) => '/encounters/$encounterId/paraclinical-plan';
+  static String activeEncounterByPatient(String patientId) =>
+      '/encounters/patient/$patientId/active';
+  static String encounterHistoryByPatient(String patientId) =>
+      '/patients/me/encounters';
+  static String paraclinicalPlan(String encounterId) =>
+      '/encounters/$encounterId/paraclinical-plan';
   static String encounterCheckIn(String id) => '/encounters/$id/checkin';
 
   // Queue Tickets
   static const String queueTickets = '/queue-tickets';
-  static String queueTicketByEncounter(String encounterId) => '/queue-tickets/by-encounter/$encounterId';
+  static String queueTicketByEncounter(String encounterId) =>
+      '/queue-tickets/by-encounter/$encounterId';
 
   // Departments
   static const String departments = '/departments';
   static String departmentStatus(String id) => '/departments/$id/status';
 
   // Pre-exam Orders
-  static String preExamOrdersByEncounter(String encounterId) => '/encounters/$encounterId/pre-exam-orders';
+  static String preExamOrdersByEncounter(String encounterId) =>
+      '/encounters/$encounterId/pre-exam-orders';
 
   // Routing Recommendations
   static const String routingRecommendations = '/routing-recommendations';
-  static String routingByEncounter(String encounterId) => '/routing-recommendations/by-encounter/$encounterId';
+  static String routingByEncounter(String encounterId) =>
+      '/routing-recommendations/by-encounter/$encounterId';
 
   // Doctors & Doctor Schedules
   static const String doctors = '/doctors';
@@ -49,9 +56,9 @@ class ApiEndpoints {
 
   // Follow-up Orders (Tái khám)
   static const String followUpOrders = '/follow-up-orders';
-  static String followUpOrdersByPatient(String patientId) => '/follow-up-orders/patient/$patientId';
+  static String followUpOrdersByPatient(String patientId) =>
+      '/follow-up-orders/patient/$patientId';
 
   // Notifications
   static const String notifications = '/notifications';
 }
-

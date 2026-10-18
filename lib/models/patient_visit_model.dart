@@ -26,9 +26,21 @@ class PatientVisitModel {
   factory PatientVisitModel.fromJson(Map<String, dynamic> json) =>
       PatientVisitModel(
         encounterId: json['encounterId']?.toString() ?? '',
-        serviceTypeName: json['serviceTypeName']?.toString() ?? 'Lượt khám',
-        status: json['status']?.toString() ?? '',
-        createdAt: DateTime.parse(json['createdAt'].toString()),
+        serviceTypeName:
+            json['serviceTypeName']?.toString() ??
+            json['departmentName']?.toString() ??
+            'Lượt khám',
+        status:
+            json['encounterStatus']?.toString() ??
+            json['status']?.toString() ??
+            '',
+        createdAt:
+            DateTime.tryParse(
+              json['createdAt']?.toString() ??
+                  json['checkInTime']?.toString() ??
+                  '',
+            ) ??
+            DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
         checkInTime: DateTime.tryParse(json['checkInTime']?.toString() ?? ''),
         roomName: json['roomName']?.toString(),
         doctorName: json['doctorName']?.toString(),
@@ -39,7 +51,9 @@ class PatientVisitModel {
         encounterId: summary.encounterId,
         serviceTypeName: summary.departmentName ?? 'Lượt khám',
         status: summary.encounterStatus,
-        createdAt: summary.checkInTime ?? DateTime.now(),
+        createdAt:
+            summary.checkInTime ??
+            DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
         checkInTime: summary.checkInTime,
         roomName: summary.roomName,
         doctorName: summary.doctorName,

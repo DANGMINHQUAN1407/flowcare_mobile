@@ -5,29 +5,40 @@ import 'package:flowcare_mobile/core/network/api_client.dart';
 import 'package:flowcare_mobile/core/utils/hospital_time.dart';
 import 'package:flowcare_mobile/models/patient_journey_model.dart';
 import 'package:flowcare_mobile/services/encounter_service.dart';
-import 'package:flowcare_mobile/services/patient_service.dart';
+import 'package:flowcare_mobile/services/auth_service.dart';
+import 'package:flowcare_mobile/services/patient_session_service.dart';
 
 /// Read-only check of the same API/models used by the mobile journey screen.
 Future<void> main(List<String> args) async {
-  if (args.length < 2) {
+  if (args.isEmpty) {
     throw ArgumentError(
-      'Usage: dart run tool/mobile_journey_probe.dart API_BASE_URL PATIENT_PHONE [yyyy-MM-dd]',
+      'Usage: dart run tool/mobile_journey_probe.dart API_BASE_URL [yyyy-MM-dd] (set FLOWCARE_PATIENT_USERNAME and FLOWCARE_PATIENT_PASSWORD)',
     );
   }
   final client = ApiClient(baseUrl: args[0]);
-  final patient = await PatientService(apiClient: client)
-      .searchPatientByPhone(args[1]);
-  if (patient == null) throw StateError('Patient was not found.');
+  final userName = Platform.environment['FLOWCARE_PATIENT_USERNAME'];
+  final password = Platform.environment['FLOWCARE_PATIENT_PASSWORD'];
+  if (userName == null || password == null) {
+    throw ArgumentError(
+      'Patient credentials are required in environment variables.',
+    );
+  }
+  final login = await AuthService(client: client).login(userName, password);
+  ApiClient.setAuthToken(login.token);
+  PatientSessionService().bindPatient(
+    patientId: login.patientId,
+    userName: login.userName,
+  );
   final encounters = EncounterService(apiClient: client);
-  final visits = await encounters.getPatientHistory(patient.id);
+  final visits = await encounters.getPatientHistory(login.patientId);
   if (visits == null) {
     throw StateError('Restart the backend with the patient history endpoint.');
   }
   final selected = visits
       .where(
         (v) =>
-            args.length < 3 ||
-            hospitalTime(v.visitTime, pattern: 'yyyy-MM-dd') == args[2],
+            args.length < 2 ||
+            hospitalTime(v.visitTime, pattern: 'yyyy-MM-dd') == args[1],
       )
       .firstOrNull;
   if (selected == null) {
@@ -60,5 +71,7 @@ Future<void> main(List<String> args) async {
           .toList(),
     }),
   );
+  ApiClient.setAuthToken(null);
+  PatientSessionService().clearSession();
   client.close();
 }

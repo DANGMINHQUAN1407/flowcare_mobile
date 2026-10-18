@@ -17,7 +17,10 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      PatientSessionService().setPhone('patient');
+      PatientSessionService().bindPatient(
+        patientId: 'patient',
+        userName: 'patient.test',
+      );
       final home = fakeHome(
         encounters: FakeEncounters()
           ..plan = ParaclinicalPlanModel.fromJson(timedPlanJson()),
@@ -48,18 +51,18 @@ void main() {
         120,
       );
       expect(find.text('6 phút'), findsOneWidget);
-      await tester.scrollUntilVisible(find.text('3. Chụp X-Quang'), 150);
-      expect(find.text('3. Chụp X-Quang'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('4. Chụp X-Quang'), 150);
+      expect(find.text('4. Chụp X-Quang'), findsOneWidget);
       await tester.scrollUntilVisible(find.text('Khoảng 3 phút').first, 100);
-      expect(find.text('Di chuyển dự kiến'), findsWidgets);
+      expect(find.text('Di chuyển theo kế hoạch'), findsWidgets);
       expect(find.text('Khoảng 3 phút'), findsWidgets);
       await tester.scrollUntilVisible(
-        find.text('Chờ kết quả dự kiến').first,
+        find.text('Chờ kết quả theo kế hoạch').first,
         100,
       );
       expect(find.text('15 phút'), findsWidgets);
-      await tester.scrollUntilVisible(find.text('4. Xét nghiệm máu'), 150);
-      expect(find.text('4. Xét nghiệm máu'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('5. Xét nghiệm máu'), 150);
+      expect(find.text('5. Xét nghiệm máu'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

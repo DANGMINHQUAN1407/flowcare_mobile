@@ -1,4 +1,6 @@
-import 'dart:async';
+import 'dart:async' hide TimeoutException;
+
+import '../core/network/api_exceptions.dart';
 
 import 'package:flutter/foundation.dart';
 
@@ -51,13 +53,16 @@ class HomeProvider extends ChangeNotifier {
        _sessionService = sessionService ?? PatientSessionService(),
        _followUpService = followUpService ?? FollowUpService(),
        _realtimeService = realtimeService ?? PatientRealtimeService() {
+    _boundSessionVersion = _sessionService.version;
     if (loadOnCreate) unawaited(loadHomeData());
   }
 
   bool _isLoading = false, _isRefreshing = false, _refreshingJourney = false;
   bool _disposed = false, _updatesEnabled = false, _liveConnecting = false;
   bool _isRealtimeConnected = false, _selectionPinned = false;
+  bool _isJourneyStale = false, _isJourneyOffline = false;
   int _loadVersion = 0;
+  late final int _boundSessionVersion;
   String? _errorMessage, _journeyError;
   DateTime? _lastUpdatedAt;
   PatientModel? _patient;
@@ -76,6 +81,9 @@ class HomeProvider extends ChangeNotifier {
   String? get journeyError => _journeyError;
   DateTime? get lastUpdatedAt => _lastUpdatedAt;
   bool get isRealtimeConnected => _isRealtimeConnected;
+  bool get isJourneyStale => _isJourneyStale;
+  bool get isJourneyOffline => _isJourneyOffline;
+  bool get updatesEnabled => _updatesEnabled;
   PatientModel? get patient => _patient;
   AppointmentCheckModel? get appointmentCheck => _appointmentCheck;
   EncounterSummaryModel? get encounterSummary => _encounterSummary;
@@ -85,6 +93,7 @@ class HomeProvider extends ChangeNotifier {
   List<PatientVisitModel> get visits => List.unmodifiable(_visits);
   List<JourneyNotice> get notices => List.unmodifiable(_notices);
   int get unreadNoticeCount => _notices.where((n) => !n.isRead).length;
+  String? get patientId => _sessionService.patientId;
   String get currentPhone => _sessionService.currentPhone;
   bool get hasActiveAppointment => _appointmentCheck?.hasAppointment == true;
   AppointmentModel? get activeAppointment => _appointmentCheck?.appointment;
@@ -98,7 +107,10 @@ class HomeProvider extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  bool _isCurrent(int version) => !_disposed && version == _loadVersion;
+  bool _isCurrent(int version) =>
+      !_disposed &&
+      version == _loadVersion &&
+      _sessionService.version == _boundSessionVersion;
 
   Future<void> loadHomeData({bool isRefresh = false}) async {
     final version = ++_loadVersion;
@@ -106,88 +118,109 @@ class HomeProvider extends ChangeNotifier {
     _isLoading = !isRefresh;
     _errorMessage = null;
     _notify();
-    final phone = currentPhone;
+    final patientId = _sessionService.patientId;
+    final issues = <String>[];
+    final failures = <String, Object>{};
+    Future<T?> read<T>(Future<T?> Function() action, String label) async {
+      try {
+        return await action();
+      } catch (error) {
+        issues.add('$label: ${patientErrorMessage(error)}');
+        failures[label] = error;
+        return null;
+      }
+    }
+
     try {
-      if (phone.isEmpty) {
+      if (patientId == null || patientId.isEmpty) {
         _clearData();
         return;
       }
-      final isUuid = RegExp(
-        r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-      ).hasMatch(phone);
-      if (isUuid) {
-        final summary = await _encounterService.getEncounterStatusSummary(
-          phone,
-        );
-        if (!_isCurrent(version)) return;
-        _patient = null;
-        _appointmentCheck = null;
-        _visits = summary == null
-            ? []
-            : [PatientVisitModel.fromSummary(summary)];
-        await _readJourney(phone, version, initialSummary: summary);
-        return;
-      }
-      final results = await Future.wait<Object?>([
-        _patientService.searchPatientByPhone(phone),
-        _appointmentService.checkAppointmentByPhone(phone),
-      ]);
+      final profile = await read(_patientService.getMyProfile, 'Hồ sơ');
       if (!_isCurrent(version)) return;
-      _patient = results[0] as PatientModel?;
-      _appointmentCheck = results[1] as AppointmentCheckModel?;
-      if (_patient == null) {
-        _clearJourney();
-        _visits = [];
-        return;
-      }
-      final patientId = _patient!.id;
-      _sessionService.setPatientId(patientId);
+      if (!failures.containsKey('Hồ sơ')) _patient = profile;
+      if (profile != null) _sessionService.setPhone(profile.phone);
       final lookup = await Future.wait<Object?>([
-        _encounterService.getPatientHistory(patientId),
-        _encounterService.getActiveEncounterByPatient(patientId),
-        _followUpService
-            .getFollowUpOrdersByPatient(patientId)
-            .catchError((_) => <FollowUpOrderModel>[]),
+        read(
+          () => _encounterService.getPatientHistory(patientId),
+          'Lịch sử lượt khám',
+        ),
+        read(
+          () => _encounterService.getActiveEncounterByPatient(patientId),
+          'Lượt khám hiện tại',
+        ),
+        // Follow-up permission is independent from viewing the current journey.
+        read(
+          () => _followUpService.getFollowUpOrdersByPatient(patientId),
+          'Lịch tái khám',
+        ),
       ]);
       if (!_isCurrent(version)) return;
       final history = lookup[0] as List<PatientVisitModel>?;
       final active = lookup[1] as EncounterSummaryModel?;
-      final followUps = lookup[2] as List<FollowUpOrderModel>;
+      final followUps = lookup[2] as List<FollowUpOrderModel>? ?? [];
       _latestFollowUpOrder = followUps.isEmpty ? null : followUps.first;
-      _visits = history ?? [];
+      if (!failures.containsKey('Lịch sử lượt khám')) {
+        _visits = history ?? [];
+      }
+      if (active != null &&
+          !_visits.any((v) => v.encounterId == active.encounterId)) {
+        _visits.insert(0, PatientVisitModel.fromSummary(active));
+      }
+      _appointmentCheck = null;
+      // The profile may be unavailable while authorized appointment/history APIs work.
+      final appointments = await read(
+        () => _appointmentService.getAppointmentsByPatient(patientId),
+        'Lịch hẹn',
+      );
+      if (!_isCurrent(version)) return;
+      final upcoming =
+          (appointments ?? <AppointmentModel>[])
+              .where(
+                (a) =>
+                    a.scheduledTime.isAfter(DateTime.now()) &&
+                    const {
+                      'pending',
+                      'confirmed',
+                      '0',
+                      '1',
+                    }.contains(a.status.toLowerCase()),
+              )
+              .toList()
+            ..sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
+      if (upcoming.isNotEmpty) {
+        _appointmentCheck = AppointmentCheckModel(
+          hasAppointment: true,
+          appointment: upcoming.first,
+        );
+      }
+      _errorMessage = issues.isEmpty ? null : issues.join('\n');
       final previousId = _sessionService.activeEncounterId;
       final pinnedExists =
           _selectionPinned && _visits.any((v) => v.encounterId == previousId);
       String? selectedId = pinnedExists ? previousId : active?.encounterId;
       selectedId ??= _visits.isNotEmpty ? _visits.first.encounterId : null;
+      final lookupFailure =
+          failures['Lịch sử lượt khám'] ?? failures['Lượt khám hiện tại'];
+      // A failed lookup is not evidence that an existing visit disappeared.
+      if (lookupFailure != null) {
+        selectedId ??= _encounterSummary?.encounterId;
+      }
       EncounterSummaryModel? selectedSummary;
       if (selectedId == active?.encounterId) selectedSummary = active;
-      if (selectedId == null && history == null) {
-        final candidates = <String>{
-          if (previousId?.isNotEmpty == true) previousId!,
-          if (_appointmentCheck?.activeEncounterId?.isNotEmpty == true)
-            _appointmentCheck!.activeEncounterId!,
-          ...followUps.map((o) => o.encounterId).where((id) => id.isNotEmpty),
-        };
-        for (final id in candidates) {
-          final summary = await _encounterService.getEncounterStatusSummary(id);
-          if (!_isCurrent(version)) return;
-          if (summary != null && summary.patientPhone == phone) {
-            selectedId = id;
-            selectedSummary = summary;
-            _visits = [PatientVisitModel.fromSummary(summary)];
-            break;
-          }
-        }
-      }
       if (selectedId == null) {
-        _clearJourney();
+        if (lookupFailure != null) {
+          _markJourneyFailure(lookupFailure);
+        } else {
+          _clearJourney();
+        }
         return;
       }
       await _readJourney(selectedId, version, initialSummary: selectedSummary);
-    } catch (_) {
+    } catch (error) {
       if (_isCurrent(version)) {
-        _errorMessage = 'Không thể đồng bộ lượt khám. Vui lòng kiểm tra kết nối và thử lại.';
+        _errorMessage = patientErrorMessage(error);
+        _markJourneyFailure(error);
       }
     } finally {
       if (_isCurrent(version)) {
@@ -213,53 +246,75 @@ class HomeProvider extends ChangeNotifier {
       _clearJourney();
       return;
     }
+    if (summary.encounterId != encounterId) {
+      throw ApiException('Lượt khám trả về không khớp yêu cầu.');
+    }
     final previous = journey;
     final sameVisit = _encounterSummary?.encounterId == summary.encounterId;
-    _encounterSummary = summary;
-    _sessionService.setActiveEncounterId(summary.encounterId);
-    if (!sameVisit) {
-      _paraclinicalPlan = null;
-      _queueTicket = null;
-    }
-    _journeyError = null;
     try {
       final result = await Future.wait<Object?>([
         _encounterService.getParaclinicalPlan(encounterId),
         _queueService.getQueueTicketByEncounter(encounterId),
       ]);
       if (!_isCurrent(version)) return;
+      // Commit one coherent summary/plan snapshot. A partial refresh must not
+      // make old room assignments look newly synchronized.
+      _encounterSummary = summary;
+      _sessionService.setActiveEncounterId(summary.encounterId);
       _paraclinicalPlan = result[0] as ParaclinicalPlanModel?;
       _queueTicket = result[1] as QueueTicketModel?;
-    } catch (_) {
+    } catch (error) {
       if (!_isCurrent(version)) return;
-      _journeyError =
-          'Chưa tải được đầy đủ các bước cận lâm sàng. Hãy thử cập nhật lại.';
+      if (!sameVisit) {
+        _encounterSummary = summary;
+        _sessionService.setActiveEncounterId(summary.encounterId);
+        _paraclinicalPlan = null;
+        _queueTicket = null;
+        _lastUpdatedAt = null;
+      }
+      _markJourneyFailure(error);
+      return;
     }
     if (!_isCurrent(version)) return;
     _lastUpdatedAt = DateTime.now();
+    _journeyError = null;
+    _isJourneyStale = false;
+    _isJourneyOffline = false;
     if (announce && sameVisit && previous != null) {
       _announceChanges(previous, journey!);
     }
   }
 
-  Future<void> refreshJourney() async {
+  void _markJourneyFailure(Object error) {
+    _isJourneyStale = true;
+    _isJourneyOffline = error is NetworkException || error is TimeoutException;
+    _journeyError = _isJourneyOffline
+        ? 'Không thể kết nối đến máy chủ để cập nhật lộ trình.'
+        : 'Chưa tải được đầy đủ lộ trình. Hãy thử cập nhật lại.';
+  }
+
+  Future<void> refreshJourney({bool includeFinalized = false}) async {
     if (_disposed || _isLoading || _isRefreshing || _refreshingJourney) return;
     if (_encounterSummary == null) {
-      if (currentPhone.isNotEmpty) await loadHomeData(isRefresh: true);
+      if (patientId != null) await loadHomeData(isRefresh: true);
       return;
     }
-    if (_encounterSummary!.isFinalized) return;
+    if (_encounterSummary!.isFinalized &&
+        !includeFinalized &&
+        !_isJourneyStale) {
+      return;
+    }
     final version = _loadVersion;
     _refreshingJourney = true;
+    _notify();
     try {
       await _readJourney(
         _encounterSummary!.encounterId,
         version,
         announce: true,
       );
-      if (_isCurrent(version)) _errorMessage = null;
-    } catch (_) {
-      if (_isCurrent(version)) _journeyError = 'Mất kết nối cập nhật. Dữ liệu đang hiển thị là lần đồng bộ gần nhất.';
+    } catch (error) {
+      if (_isCurrent(version)) _markJourneyFailure(error);
     } finally {
       _refreshingJourney = false;
       if (_isCurrent(version)) {
@@ -279,9 +334,10 @@ class HomeProvider extends ChangeNotifier {
     _notify();
     try {
       await _readJourney(encounterId, version);
-    } catch (_) {
+    } catch (error) {
       if (_isCurrent(version)) {
         _errorMessage = 'Không tải được lượt khám đã chọn.';
+        _markJourneyFailure(error);
       }
     } finally {
       if (_isCurrent(version)) {
@@ -311,7 +367,12 @@ class HomeProvider extends ChangeNotifier {
   }
 
   void _ensureRealtime() {
-    if (_disposed || !_updatesEnabled || _liveConnecting) return;
+    if (_disposed ||
+        !_updatesEnabled ||
+        _liveConnecting ||
+        _sessionService.version != _boundSessionVersion) {
+      return;
+    }
     final summary = _encounterSummary;
     if (summary == null || summary.isFinalized) {
       _isRealtimeConnected = false;
@@ -350,6 +411,12 @@ class HomeProvider extends ChangeNotifier {
               }
             },
           )
+          .catchError((Object error) {
+            if (watchingThisVisit()) {
+              _isRealtimeConnected = false;
+              _notify();
+            }
+          })
           .whenComplete(() {
             _liveConnecting = false;
             if (!_disposed &&
@@ -407,6 +474,8 @@ class HomeProvider extends ChangeNotifier {
     _queueTicket = null;
     _journeyError = null;
     _lastUpdatedAt = null;
+    _isJourneyStale = false;
+    _isJourneyOffline = false;
     _isRealtimeConnected = false;
     unawaited(_realtimeService.disconnect());
   }
@@ -420,26 +489,9 @@ class HomeProvider extends ChangeNotifier {
     _clearJourney();
   }
 
-  void setDemoPhone(String phone, {String? encounterId}) =>
-      switchPhone(phone, encounterId: encounterId);
-
-  void switchPhone(String phone, {String? encounterId}) {
-    if (phone.trim() != currentPhone) {
-      _loadVersion++;
-      _clearData();
-      _sessionService.clearSession();
-      _selectionPinned = false;
-    }
-    _sessionService.setPhone(phone);
-    if (encounterId?.isNotEmpty == true) {
-      _sessionService.setActiveEncounterId(encounterId);
-    }
-    unawaited(loadHomeData());
-  }
-
   void logout() {
     _loadVersion++;
-    _sessionService.clearSession();
+    stopUpdates();
     _selectionPinned = false;
     _clearData();
     _isLoading = false;

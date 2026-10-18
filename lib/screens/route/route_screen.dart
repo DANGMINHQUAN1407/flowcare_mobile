@@ -7,9 +7,14 @@ import '../../models/patient_journey_model.dart';
 import '../../providers/home_provider.dart';
 import '../../widgets/patient_notifications_sheet.dart';
 import '../../widgets/journey_timing_card.dart';
+import '../../widgets/journey_next_stop.dart';
+import '../../widgets/route_assistance_card.dart';
+import '../../services/route_assistance_service.dart';
+import '../../services/patient_session_service.dart';
 
 class RouteScreen extends StatelessWidget {
-  const RouteScreen({super.key});
+  final RouteAssistanceService? assistanceService;
+  const RouteScreen({super.key, this.assistanceService});
 
   @override
   Widget build(BuildContext context) => Consumer<HomeProvider>(
@@ -33,19 +38,19 @@ class RouteScreen extends StatelessWidget {
               tooltip: 'Cập nhật lộ trình',
               onPressed: home.isRefreshing
                   ? null
-                  : () => home.loadHomeData(isRefresh: true),
+                  : () => home.refreshJourney(includeFinalized: true),
               icon: const Icon(Icons.refresh_rounded),
             ),
           ],
         ),
         body: SafeArea(
           child: RefreshIndicator(
-            onRefresh: () => home.loadHomeData(isRefresh: true),
+            onRefresh: () => home.refreshJourney(includeFinalized: true),
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               children: [
-                if (home.visits.isNotEmpty) ...[
+                if (home.visits.length > 1) ...[
                   _visitSelector(home),
                   const SizedBox(height: 16),
                 ],
@@ -54,10 +59,10 @@ class RouteScreen extends StatelessWidget {
                     home.errorMessage!,
                     onRetry: () => home.loadHomeData(isRefresh: true),
                   ),
-                if (home.journeyError != null)
+                if (home.journeyError != null && journey == null)
                   _warning(
                     home.journeyError!,
-                    onRetry: () => home.loadHomeData(isRefresh: true),
+                    onRetry: () => home.refreshJourney(includeFinalized: true),
                   ),
                 if (home.isLoading && journey == null)
                   const Padding(
@@ -67,48 +72,47 @@ class RouteScreen extends StatelessWidget {
                 else if (journey == null)
                   _emptyState(home)
                 else ...[
-                  _statusBanner(journey),
+                  _syncStatus(home),
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Icon(
-                        journey.isFinalized
-                            ? Icons.history_rounded
-                            : home.isRealtimeConnected
-                            ? Icons.wifi_rounded
-                            : Icons.sync_rounded,
-                        size: 15,
+                  _statusBanner(
+                    journey,
+                    isStale: home.isJourneyStale,
+                    hasSnapshot: home.lastUpdatedAt != null,
+                  ),
+                  if (journey.plan?.followsOriginalOrder == true) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Lộ trình ban đầu theo thứ tự chỉ định. Bạn có thể nhờ tối ưu; phương án mới cần bác sĩ duyệt trước khi áp dụng.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.5,
                         color: AppColors.textSecondary,
                       ),
-                      Text(
-                        journey.isFinalized
-                            ? 'Lịch sử lượt khám'
-                            : home.isRefreshing
-                            ? 'Đang cập nhật...'
-                            : home.isRealtimeConnected
-                            ? 'Đang đồng bộ trực tiếp'
-                            : 'Tự cập nhật mỗi 20 giây',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
+                    ),
+                  ],
+                  if (!journey.isFinalized &&
+                      !PatientSessionService().isDemo &&
+                      home.patientId != null) ...[
+                    const SizedBox(height: 16),
+                    RouteAssistanceCard(
+                      key: ValueKey(
+                        'support:${PatientSessionService().version}:${home.encounterSummary!.encounterId}',
                       ),
-                      if (home.lastUpdatedAt != null)
-                        Text(
-                          '· ${hospitalTime(home.lastUpdatedAt!, pattern: 'HH:mm:ss')}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                    ],
-                  ),
+                      encounterId: home.encounterSummary!.encounterId,
+                      patientId: home.patientId!,
+                      isStale: home.isJourneyStale,
+                      refreshToken: home.lastUpdatedAt,
+                      service: assistanceService,
+                      onApplied: () =>
+                          home.refreshJourney(includeFinalized: true),
+                    ),
+                  ],
                   if (journey.timing != null) ...[
                     const SizedBox(height: 16),
-                    JourneyTimingSummary(timing: journey.timing!),
+                    JourneyTimingSummary(
+                      timing: journey.timing!,
+                      historical: journey.isFinalized,
+                    ),
                   ],
                   const SizedBox(height: 22),
                   Text(
@@ -149,10 +153,6 @@ class RouteScreen extends StatelessWidget {
                       i,
                       isLast: i == journey.steps.length - 1,
                       finalized: journey.isFinalized,
-                    ),
-                  if (journey.plan?.isProposed == true)
-                    _warning(
-                      'Lộ trình cận lâm sàng đang chờ nhân viên y tế duyệt. Hãy chờ hướng dẫn trước khi di chuyển.',
                     ),
                   const SizedBox(height: 12),
                   const Text(
@@ -200,7 +200,7 @@ class RouteScreen extends StatelessWidget {
                     (visit) => DropdownMenuItem(
                       value: visit.encounterId,
                       child: Text(
-                        '${hospitalTime(visit.visitTime, pattern: 'dd/MM/yyyy')} · ${visit.serviceTypeName}',
+                        '${visit.visitTime.millisecondsSinceEpoch == 0 ? 'Chưa có ngày khám' : hospitalTime(visit.visitTime, pattern: 'dd/MM/yyyy')} · ${visit.serviceTypeName}',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -223,7 +223,100 @@ class RouteScreen extends StatelessWidget {
     );
   }
 
-  Widget _statusBanner(PatientJourney journey) {
+  Widget _syncStatus(HomeProvider home) {
+    final stale = home.isJourneyStale;
+    final finalized = home.journey?.isFinalized == true;
+    final title = home.isRefreshing
+        ? 'Đang cập nhật lộ trình…'
+        : home.isJourneyOffline
+        ? 'Mất kết nối máy chủ'
+        : stale
+        ? 'Chưa cập nhật được lộ trình'
+        : finalized
+        ? 'Lịch sử lượt khám'
+        : home.isRealtimeConnected
+        ? 'Đang đồng bộ trực tiếp'
+        : home.updatesEnabled
+        ? 'Đang cập nhật định kỳ'
+        : 'Đã tải lộ trình';
+    final color = stale ? AppColors.warning : AppColors.textSecondary;
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        key: const ValueKey('journey-sync-status'),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: stale ? AppColors.warningLight : AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  home.isJourneyOffline
+                      ? Icons.wifi_off_rounded
+                      : stale
+                      ? Icons.sync_problem_rounded
+                      : finalized
+                      ? Icons.history_rounded
+                      : Icons.sync_rounded,
+                  color: color,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              home.lastUpdatedAt == null
+                  ? 'Chưa có lần cập nhật đầy đủ.'
+                  : '${stale ? 'Đang hiển thị dữ liệu cập nhật lúc' : 'Cập nhật lúc'} ${hospitalTime(home.lastUpdatedAt!, pattern: 'dd/MM HH:mm:ss')}',
+              style: const TextStyle(
+                fontSize: 11,
+                height: 1.5,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            if (stale ||
+                (!finalized &&
+                    home.updatesEnabled &&
+                    !home.isRealtimeConnected)) ...[
+              const SizedBox(height: 4),
+              Text(
+                home.updatesEnabled && (!finalized || stale)
+                    ? 'Tự kiểm tra lại mỗi 20 giây. Bạn cũng có thể bấm cập nhật.'
+                    : 'Bấm cập nhật để thử kết nối lại.',
+                style: const TextStyle(
+                  fontSize: 11,
+                  height: 1.5,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusBanner(
+    PatientJourney journey, {
+    required bool isStale,
+    required bool hasSnapshot,
+  }) {
     final finalized = journey.isFinalized;
     final current = journey.currentStep;
     final emergency = journey.summary.isEmergency && !finalized;
@@ -290,72 +383,15 @@ class RouteScreen extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 12),
-          Text(instruction, style: const TextStyle(fontSize: 13, height: 1.5)),
-          if (!finalized && current?.location.isNotEmpty == true) ...[
-            const SizedBox(height: 6),
-            Text(
-              current!.location,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: accent,
-              ),
-            ),
-          ],
-          if (!finalized && current?.queueNumber != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Số thứ tự: #${current!.queueNumber}',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                color: accent,
-              ),
-            ),
-          ],
-          if (!finalized && current?.timing != null) ...[
-            const SizedBox(height: 12),
-            JourneyTravelHighlight(minutes: current!.timing!.travelMinutes),
-            const SizedBox(height: 6),
-            Text(
-              'Chờ trước dịch vụ dự kiến: ${journeyMinutes(current.timing!.waitBeforeServiceMinutes)}',
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-          if (!finalized &&
-              current?.isService == true &&
-              current?.estimatedStartTime != null &&
-              current!.estimatedStartTime!.isAfter(DateTime.now())) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Dự kiến đến lượt: ${hospitalTime(current.estimatedStartTime!, pattern: 'HH:mm')}',
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-          if (!finalized &&
-              current?.id == 'consultation' &&
-              journey.summary.queueStatus?.toLowerCase() == 'waiting' &&
-              journey.summary.estimatedWaitMinutes != null &&
-              journey.summary.checkInTime != null &&
-              isSameHospitalDay(
-                journey.summary.checkInTime!,
-                DateTime.now(),
-              )) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Thời gian chờ ước tính: ~${journey.summary.estimatedWaitMinutes} phút',
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
+          if (finalized || emergency)
+            Text(instruction, style: const TextStyle(fontSize: 13, height: 1.5))
+          else if (isStale && !hasSnapshot)
+            const Text(
+              'Chưa đủ dữ liệu để hướng dẫn di chuyển. Hãy cập nhật lại hoặc hỏi nhân viên y tế.',
+              style: TextStyle(fontSize: 13, height: 1.5),
+            )
+          else
+            JourneyNextStop(journey: journey, isStale: isStale),
         ],
       ),
     );
@@ -380,7 +416,9 @@ class RouteScreen extends StatelessWidget {
       JourneyStepState.waiting => Icons.hourglass_bottom_rounded,
       JourneyStepState.skipped => Icons.skip_next_rounded,
       _ =>
-        step.isService
+        step.id == 'nursing-intake'
+            ? Icons.health_and_safety_outlined
+            : step.isService
             ? Icons.biotech_rounded
             : Icons.medical_services_outlined,
     };
@@ -470,7 +508,13 @@ class RouteScreen extends StatelessWidget {
                   ],
                   if (step.timing != null) ...[
                     const SizedBox(height: 12),
-                    JourneyStepTimingCard(timing: step.timing!),
+                    JourneyStepTimingCard(
+                      timing: step.timing!,
+                      historical:
+                          finalized ||
+                          state == JourneyStepState.completed ||
+                          state == JourneyStepState.skipped,
+                    ),
                   ],
                   if (step.queueNumber != null && !finalized) ...[
                     const SizedBox(height: 6),
@@ -494,8 +538,9 @@ class RouteScreen extends StatelessWidget {
                     ),
                   ],
                   if (step.instruction?.isNotEmpty == true &&
-                      !finalized &&
-                      state != JourneyStepState.completed) ...[
+                      (step.id == 'nursing-intake' ||
+                          (!finalized &&
+                              state != JourneyStepState.completed))) ...[
                     const SizedBox(height: 8),
                     Text(
                       step.instruction!,
@@ -538,15 +583,17 @@ class RouteScreen extends StatelessWidget {
           color: AppColors.textTertiary,
         ),
         const SizedBox(height: 18),
-        const Text(
-          'Chưa có lượt khám để theo dõi',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        Text(
+          home.isJourneyStale
+              ? 'Chưa tải được lộ trình'
+              : 'Chưa có lượt khám để theo dõi',
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 10),
         Text(
-          home.currentPhone.isEmpty
-              ? 'Tra cứu số điện thoại ở Trang chủ để xem lượt khám của bạn.'
+          home.isJourneyStale
+              ? 'Hãy thử cập nhật lại khi kết nối đến máy chủ hoạt động.'
               : 'Lộ trình sẽ hiển thị sau khi bệnh viện tiếp nhận lượt khám.',
           textAlign: TextAlign.center,
           style: const TextStyle(

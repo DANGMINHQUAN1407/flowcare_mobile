@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../providers/booking_provider.dart';
+import '../../services/patient_session_service.dart';
 import '../../providers/history_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../widgets/error_state_widget.dart';
@@ -12,10 +14,7 @@ import '../../widgets/loading_state_widget.dart';
 class BookingScreen extends StatefulWidget {
   final void Function(int tabIndex)? onNavigateToTab;
 
-  const BookingScreen({
-    super.key,
-    this.onNavigateToTab,
-  });
+  const BookingScreen({super.key, this.onNavigateToTab});
 
   @override
   State<BookingScreen> createState() => _BookingScreenState();
@@ -34,17 +33,22 @@ class _BookingScreenState extends State<BookingScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
+      final bookingProvider = Provider.of<BookingProvider>(
+        context,
+        listen: false,
+      );
       if (_fullNameCtrl.text.isEmpty && bookingProvider.fullName.isNotEmpty) {
         _fullNameCtrl.text = bookingProvider.fullName;
       }
       if (_phoneCtrl.text.isEmpty && bookingProvider.phone.isNotEmpty) {
         _phoneCtrl.text = bookingProvider.phone;
       }
-      if (_nationalIdCtrl.text.isEmpty && (bookingProvider.nationalId?.isNotEmpty ?? false)) {
+      if (_nationalIdCtrl.text.isEmpty &&
+          (bookingProvider.nationalId?.isNotEmpty ?? false)) {
         _nationalIdCtrl.text = bookingProvider.nationalId!;
       }
-      if (_addressCtrl.text.isEmpty && (bookingProvider.address?.isNotEmpty ?? false)) {
+      if (_addressCtrl.text.isEmpty &&
+          (bookingProvider.address?.isNotEmpty ?? false)) {
         _addressCtrl.text = bookingProvider.address!;
       }
       if (bookingProvider.services.isEmpty && !bookingProvider.isLoading) {
@@ -69,7 +73,15 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   String _formatDateFull(DateTime date) {
-    const weekdays = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'];
+    const weekdays = [
+      'Thứ 2',
+      'Thứ 3',
+      'Thứ 4',
+      'Thứ 5',
+      'Thứ 6',
+      'Thứ 7',
+      'Chủ Nhật',
+    ];
     final formatted = DateFormat('dd/MM/yyyy').format(date);
     return '$formatted (${weekdays[date.weekday - 1]})';
   }
@@ -201,6 +213,17 @@ class _BookingScreenState extends State<BookingScreen> {
       body: SafeArea(
         child: Consumer<BookingProvider>(
           builder: (context, bookingProvider, child) {
+            if (PatientSessionService().isDemo) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text(
+                    'Chức năng đặt lịch cần đăng nhập bằng tài khoản bệnh nhân.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
             // 1. Loading State
             if (bookingProvider.isLoading) {
               return const LoadingStateWidget(
@@ -209,7 +232,8 @@ class _BookingScreenState extends State<BookingScreen> {
             }
 
             // 2. Global Error State
-            if (bookingProvider.errorMessage != null && bookingProvider.services.isEmpty) {
+            if (bookingProvider.errorMessage != null &&
+                bookingProvider.services.isEmpty) {
               return ErrorStateWidget(
                 message: bookingProvider.errorMessage!,
                 onRetry: () {
@@ -247,7 +271,10 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
-  Widget _buildCurrentStepBox(BuildContext context, BookingProvider bookingProvider) {
+  Widget _buildCurrentStepBox(
+    BuildContext context,
+    BookingProvider bookingProvider,
+  ) {
     switch (_currentStep) {
       case 0:
         return _buildStep1Box(context, bookingProvider);
@@ -269,6 +296,13 @@ class _BookingScreenState extends State<BookingScreen> {
         _buildBookingTypeSelector(bookingProvider),
         const SizedBox(height: 14),
 
+        if (bookingProvider.followUpError != null) ...[
+          Text(
+            'Lịch tái khám: ${bookingProvider.followUpError}',
+            style: const TextStyle(color: AppColors.emergency),
+          ),
+          const SizedBox(height: 12),
+        ],
         // If in Follow-Up mode, show Follow-Up Context Banner
         if (bookingProvider.isFollowUp) ...[
           _buildFollowUpContextCard(bookingProvider),
@@ -303,10 +337,13 @@ class _BookingScreenState extends State<BookingScreen> {
           height: 50,
           child: ElevatedButton.icon(
             onPressed: () {
-              if (bookingProvider.fullName.trim().isEmpty || bookingProvider.phone.trim().isEmpty) {
+              if (bookingProvider.fullName.trim().isEmpty ||
+                  bookingProvider.phone.trim().isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Vui lòng nhập họ tên và số điện thoại liên hệ!'),
+                    content: Text(
+                      'Vui lòng nhập họ tên và số điện thoại liên hệ!',
+                    ),
                     backgroundColor: Colors.orange,
                     behavior: SnackBarBehavior.floating,
                   ),
@@ -387,7 +424,10 @@ class _BookingScreenState extends State<BookingScreen> {
                     ),
                   ),
                   icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                  label: const Text('Quay lại', style: TextStyle(fontWeight: FontWeight.w700)),
+                  label: const Text(
+                    'Quay lại',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
               ),
             ),
@@ -401,7 +441,9 @@ class _BookingScreenState extends State<BookingScreen> {
                     if (bookingProvider.selectedSlot == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Vui lòng chọn một khung giờ khám khả dụng!'),
+                          content: Text(
+                            'Vui lòng chọn một khung giờ khám khả dụng!',
+                          ),
                           backgroundColor: Colors.orange,
                           behavior: SnackBarBehavior.floating,
                         ),
@@ -446,7 +488,8 @@ class _BookingScreenState extends State<BookingScreen> {
         _buildStepHeader(
           stepNumber: '+',
           title: 'Ghi chú cho Bác sĩ (Tùy chọn)',
-          subtitle: 'Nhập lý do khám hoặc triệu chứng để Bác sĩ chuẩn bị chu đáo hơn',
+          subtitle:
+              'Nhập lý do khám hoặc triệu chứng để Bác sĩ chuẩn bị chu đáo hơn',
         ),
         const SizedBox(height: 10),
         _buildSpecialtyContextSection(context, bookingProvider),
@@ -461,11 +504,17 @@ class _BookingScreenState extends State<BookingScreen> {
             decoration: BoxDecoration(
               color: AppColors.emergencyLight,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.emergency.withValues(alpha: 0.3)),
+              border: Border.all(
+                color: AppColors.emergency.withValues(alpha: 0.3),
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.error_outline_rounded, color: AppColors.emergency, size: 20),
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: AppColors.emergency,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -498,7 +547,10 @@ class _BookingScreenState extends State<BookingScreen> {
                     ),
                   ),
                   icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                  label: const Text('Quay lại', style: TextStyle(fontWeight: FontWeight.w700)),
+                  label: const Text(
+                    'Quay lại',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
               ),
             ),
@@ -508,16 +560,29 @@ class _BookingScreenState extends State<BookingScreen> {
               child: SizedBox(
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: bookingProvider.canSubmit && !bookingProvider.isSubmitting
+                  onPressed:
+                      bookingProvider.canSubmit && !bookingProvider.isSubmitting
                       ? () async {
                           final success = await bookingProvider.submitBooking();
                           if (success && context.mounted) {
-                            final homeProvider = Provider.of<HomeProvider>(context, listen: false);
-                            final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
+                            final homeProvider = Provider.of<HomeProvider>(
+                              context,
+                              listen: false,
+                            );
+                            final historyProvider =
+                                Provider.of<HistoryProvider>(
+                                  context,
+                                  listen: false,
+                                );
                             homeProvider.loadHomeData(isRefresh: true);
-                            historyProvider.loadAppointments(bookingProvider.patient?.id, isRefresh: true);
+                            historyProvider.loadAppointments(
+                              bookingProvider.patient?.id,
+                              isRefresh: true,
+                            );
                           } else if (!success && context.mounted) {
-                            final errorMsg = bookingProvider.errorMessage ?? 'Không thể đặt lịch khám. Vui lòng kiểm tra lại!';
+                            final errorMsg =
+                                bookingProvider.errorMessage ??
+                                'Không thể đặt lịch khám. Vui lòng kiểm tra lại!';
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(errorMsg),
@@ -546,7 +611,10 @@ class _BookingScreenState extends State<BookingScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.check_circle_outline_rounded, size: 20),
+                      : const Icon(
+                          Icons.check_circle_outline_rounded,
+                          size: 20,
+                        ),
                   label: Text(
                     bookingProvider.isSubmitting
                         ? 'Đang gửi yêu cầu...'
@@ -598,7 +666,9 @@ class _BookingScreenState extends State<BookingScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  color: !bookingProvider.isFollowUp ? AppColors.primary : Colors.transparent,
+                  color: !bookingProvider.isFollowUp
+                      ? AppColors.primary
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
@@ -607,15 +677,21 @@ class _BookingScreenState extends State<BookingScreen> {
                     Icon(
                       Icons.add_circle_outline_rounded,
                       size: 16,
-                      color: !bookingProvider.isFollowUp ? Colors.white : AppColors.textSecondary,
+                      color: !bookingProvider.isFollowUp
+                          ? Colors.white
+                          : AppColors.textSecondary,
                     ),
                     const SizedBox(width: 6),
                     Text(
                       'Khám mới',
                       style: TextStyle(
                         fontSize: 13,
-                        fontWeight: !bookingProvider.isFollowUp ? FontWeight.w800 : FontWeight.w600,
-                        color: !bookingProvider.isFollowUp ? Colors.white : AppColors.textSecondary,
+                        fontWeight: !bookingProvider.isFollowUp
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                        color: !bookingProvider.isFollowUp
+                            ? Colors.white
+                            : AppColors.textSecondary,
                       ),
                     ),
                   ],
@@ -639,7 +715,9 @@ class _BookingScreenState extends State<BookingScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  color: bookingProvider.isFollowUp ? const Color(0xFF0077C8) : Colors.transparent,
+                  color: bookingProvider.isFollowUp
+                      ? const Color(0xFF0077C8)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
@@ -648,23 +726,34 @@ class _BookingScreenState extends State<BookingScreen> {
                     Icon(
                       Icons.sync_rounded,
                       size: 16,
-                      color: bookingProvider.isFollowUp ? Colors.white : AppColors.textSecondary,
+                      color: bookingProvider.isFollowUp
+                          ? Colors.white
+                          : AppColors.textSecondary,
                     ),
                     const SizedBox(width: 6),
                     Text(
                       'Tái khám theo hẹn',
                       style: TextStyle(
                         fontSize: 13,
-                        fontWeight: bookingProvider.isFollowUp ? FontWeight.w800 : FontWeight.w600,
-                        color: bookingProvider.isFollowUp ? Colors.white : AppColors.textSecondary,
+                        fontWeight: bookingProvider.isFollowUp
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                        color: bookingProvider.isFollowUp
+                            ? Colors.white
+                            : AppColors.textSecondary,
                       ),
                     ),
                     if (pendingOrders.isNotEmpty) ...[
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: bookingProvider.isFollowUp ? Colors.white : AppColors.secondary,
+                          color: bookingProvider.isFollowUp
+                              ? Colors.white
+                              : AppColors.secondary,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -672,7 +761,9 @@ class _BookingScreenState extends State<BookingScreen> {
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
-                            color: bookingProvider.isFollowUp ? const Color(0xFF0077C8) : Colors.white,
+                            color: bookingProvider.isFollowUp
+                                ? const Color(0xFF0077C8)
+                                : Colors.white,
                           ),
                         ),
                       ),
@@ -688,10 +779,15 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   Widget _buildFollowUpContextCard(BookingProvider bookingProvider) {
-    final doctorName = bookingProvider.originalDoctorName ?? 'Bác sĩ chuyên khoa theo dõi';
-    final diagnosis = bookingProvider.previousDiagnosis ?? 'Tái khám định kỳ theo hẹn của Bác sĩ';
+    final doctorName =
+        bookingProvider.originalDoctorName ?? 'Bác sĩ chuyên khoa theo dõi';
+    final diagnosis =
+        bookingProvider.previousDiagnosis ??
+        'Tái khám định kỳ theo hẹn của Bác sĩ';
     final targetDate = bookingProvider.recommendedFollowUpDate;
-    final dateStr = targetDate != null ? DateFormat('dd/MM/yyyy').format(targetDate) : null;
+    final dateStr = targetDate != null
+        ? DateFormat('dd/MM/yyyy').format(targetDate)
+        : null;
     final pendingOrders = bookingProvider.pendingFollowUpOrders;
 
     return Container(
@@ -700,7 +796,9 @@ class _BookingScreenState extends State<BookingScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFFEBF5FF),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF0077C8).withValues(alpha: 0.3)),
+        border: Border.all(
+          color: const Color(0xFF0077C8).withValues(alpha: 0.3),
+        ),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF0077C8).withValues(alpha: 0.06),
@@ -720,7 +818,11 @@ class _BookingScreenState extends State<BookingScreen> {
                   color: const Color(0xFF0077C8),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.sync_rounded, color: Colors.white, size: 18),
+                child: const Icon(
+                  Icons.sync_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ),
               const SizedBox(width: 10),
               const Expanded(
@@ -738,7 +840,10 @@ class _BookingScreenState extends State<BookingScreen> {
                     ),
                     Text(
                       'Ưu tiên giữ liên kết hồ sơ y tế & Bác sĩ điều trị',
-                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -746,7 +851,10 @@ class _BookingScreenState extends State<BookingScreen> {
               InkWell(
                 onTap: () => bookingProvider.clearFollowUp(),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(6),
@@ -754,7 +862,11 @@ class _BookingScreenState extends State<BookingScreen> {
                   ),
                   child: const Text(
                     'Đổi sang khám mới',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
               ),
@@ -764,12 +876,20 @@ class _BookingScreenState extends State<BookingScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.person_rounded, size: 16, color: Color(0xFF005BAC)),
+              const Icon(
+                Icons.person_rounded,
+                size: 16,
+                color: Color(0xFF005BAC),
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   'Bác sĩ điều trị trước: $doctorName',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
             ],
@@ -778,12 +898,20 @@ class _BookingScreenState extends State<BookingScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.assignment_outlined, size: 16, color: AppColors.textSecondary),
+              const Icon(
+                Icons.assignment_outlined,
+                size: 16,
+                color: AppColors.textSecondary,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   'Chẩn đoán trước: $diagnosis',
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.3),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                    height: 1.3,
+                  ),
                 ),
               ),
             ],
@@ -795,12 +923,18 @@ class _BookingScreenState extends State<BookingScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFF0077C8).withValues(alpha: 0.2)),
+                border: Border.all(
+                  color: const Color(0xFF0077C8).withValues(alpha: 0.2),
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.event_available_rounded, size: 14, color: Color(0xFF005BAC)),
+                  const Icon(
+                    Icons.event_available_rounded,
+                    size: 14,
+                    color: Color(0xFF005BAC),
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     'Ngày bác sĩ hẹn: $dateStr',
@@ -818,7 +952,11 @@ class _BookingScreenState extends State<BookingScreen> {
             const SizedBox(height: 10),
             const Text(
               'Chọn phiếu tái khám từ danh sách:',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
             ),
             const SizedBox(height: 6),
             Wrap(
@@ -827,7 +965,9 @@ class _BookingScreenState extends State<BookingScreen> {
               children: pendingOrders.map((ord) {
                 final isCurrent = bookingProvider.followUpOrderId == ord.id;
                 return ChoiceChip(
-                  label: Text('Phiếu ${DateFormat('dd/MM').format(ord.targetDate)} - ${ord.originalDoctorName}'),
+                  label: Text(
+                    'Phiếu ${DateFormat('dd/MM').format(ord.targetDate)} - ${ord.originalDoctorName}',
+                  ),
                   selected: isCurrent,
                   onSelected: (selected) {
                     if (selected) {
@@ -842,7 +982,6 @@ class _BookingScreenState extends State<BookingScreen> {
       ),
     );
   }
-
 
   Widget _buildStepHeader({
     required String stepNumber,
@@ -898,743 +1037,35 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   Widget _buildPatientInfoInputSection(BookingProvider bookingProvider) {
-    // Clear controllers if patient session was logged out or cleared
-    if (bookingProvider.patient == null && bookingProvider.phone.isEmpty) {
-      if (_fullNameCtrl.text.isNotEmpty || _phoneCtrl.text.isNotEmpty) {
-        _fullNameCtrl.clear();
-        _phoneCtrl.clear();
-        _nationalIdCtrl.clear();
-        _addressCtrl.clear();
-        _notesCtrl.clear();
-      }
-    }
-
-    final hasPatient = bookingProvider.patient != null || 
-        (_fullNameCtrl.text.trim().isNotEmpty && _phoneCtrl.text.trim().length >= 10);
-
+    final patient = bookingProvider.patient;
     return Container(
       width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: hasPatient ? AppColors.primary.withValues(alpha: 0.3) : AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: hasPatient ? AppColors.primary.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        border: Border.all(color: AppColors.border),
       ),
-      child: hasPatient
-          ? _buildSelectedPatientCard(bookingProvider)
-          : _buildEmptyPatientCard(bookingProvider),
-    );
-  }
-
-  /// Card hiển thị khi ĐÃ CÓ / ĐÃ CHỌN hồ sơ bệnh nhân
-  Widget _buildSelectedPatientCard(BookingProvider bookingProvider) {
-    final patient = bookingProvider.patient;
-    final displayName = patient?.fullName ?? bookingProvider.fullName;
-    final displayPhone = patient?.phone ?? bookingProvider.phone;
-    final displayDob = patient?.dob ?? 
-        (bookingProvider.dob != null ? DateFormat('dd/MM/yyyy').format(bookingProvider.dob!) : null);
-    final displayNationalId = patient?.nationalId ?? bookingProvider.nationalId;
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header: Avatar & Verified Badge
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.primary, Color(0xFF0077C8)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(Icons.person_rounded, color: Colors.white, size: 28),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            displayName.isNotEmpty ? displayName : 'Bệnh nhân',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE6F4EA),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0xFF34A853).withValues(alpha: 0.3)),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.check_circle_rounded, size: 11, color: Color(0xFF1E7E34)),
-                              SizedBox(width: 3),
-                              Text(
-                                'Hồ sơ hợp lệ',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1E7E34),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        const Icon(Icons.phone_android_rounded, size: 14, color: AppColors.primary),
-                        const SizedBox(width: 4),
-                        Text(
-                          displayPhone,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        if (patient?.id != null) ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            '• ID: ${patient!.id.substring(0, 8).toUpperCase()}',
-                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontFamily: 'monospace'),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-          const Divider(height: 1),
-          const SizedBox(height: 12),
-
-          // Chips thông tin chi tiết
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              if (displayDob != null)
-                _buildInfoBadge(Icons.cake_outlined, 'Ngày sinh: $displayDob'),
-              _buildInfoBadge(Icons.female_rounded, 'Giới tính: ${patient?.gender ?? "Nữ"}'),
-              if (displayNationalId != null && displayNationalId.isNotEmpty)
-                _buildInfoBadge(Icons.badge_outlined, 'CCCD: $displayNationalId'),
-              if (patient?.bloodGroup != null)
-                _buildInfoBadge(Icons.bloodtype_outlined, 'Nhóm máu: ${patient!.bloodGroup}'),
-            ],
-          ),
-
-          const SizedBox(height: 14),
-
-          // Action Buttons: Đổi hồ sơ / Tạo hồ sơ mới
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _showSearchPatientDialog(context, bookingProvider),
-                  icon: const Icon(Icons.search_rounded, size: 16),
-                  label: const Text('Tra cứu SĐT khác', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.primary,
-                    side: const BorderSide(color: AppColors.border),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _showCreatePatientBottomSheet(context, bookingProvider),
-                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
-                  label: const Text('Tạo hồ sơ mới', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF0F7FF),
-                    foregroundColor: AppColors.primary,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Card hiển thị khi CHƯA CÓ hồ sơ bệnh nhân
-  Widget _buildEmptyPatientCard(BookingProvider bookingProvider) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.08),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.badge_outlined,
-              size: 28,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(height: 12),
           const Text(
-            'Chưa có hồ sơ người khám bệnh',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
+            'Hồ sơ của tài khoản đang đăng nhập',
+            style: TextStyle(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
+          Text(patient?.fullName ?? 'Chưa tải được hồ sơ bệnh nhân'),
+          if (patient != null) ...[
+            const SizedBox(height: 4),
+            Text(patient.phone),
+          ],
+          const SizedBox(height: 8),
           const Text(
-            'Vui lòng tạo hồ sơ bệnh nhân để đặt lịch khám và nhận mã phiếu khám điện tử.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Nút tạo hồ sơ mới
-          SizedBox(
-            width: double.infinity,
-            height: 46,
-            child: ElevatedButton.icon(
-              onPressed: () => _showCreatePatientBottomSheet(context, bookingProvider),
-              icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-              label: const Text(
-                'Tạo hồ sơ bệnh nhân mới',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 1,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          // Nút tra cứu nhanh theo SĐT
-          TextButton.icon(
-            onPressed: () => _showSearchPatientDialog(context, bookingProvider),
-            icon: const Icon(Icons.search_rounded, size: 16),
-            label: const Text(
-              'Đã từng khám? Nhập số điện thoại để tìm hồ sơ',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            ),
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.primary,
-            ),
+            'Lịch hẹn được tạo cho hồ sơ này. Đăng xuất nếu bạn cần dùng tài khoản khác.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildInfoBadge(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceVariant.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: AppColors.textSecondary),
-          const SizedBox(width: 4),
-          Text(
-            text,
-            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// BottomSheet tạo mới hồ sơ bệnh nhân
-  void _showCreatePatientBottomSheet(BuildContext context, BookingProvider bookingProvider) {
-    final nameCtrl = TextEditingController(text: bookingProvider.fullName);
-    final phoneCtrl = TextEditingController(text: bookingProvider.phone);
-    final idCtrl = TextEditingController(text: bookingProvider.nationalId ?? '');
-    final addrCtrl = TextEditingController(text: bookingProvider.address ?? '');
-    DateTime? selectedDob = bookingProvider.dob;
-    String selectedGender = 'Female';
-    bool isSaving = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (bottomSheetContext) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            final dobDisplay = selectedDob != null 
-                ? DateFormat('dd/MM/yyyy').format(selectedDob!) 
-                : null;
-
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(bottomSheetContext).viewInsets.bottom + 24,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Handle Bar
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Title
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryLight,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.person_add_rounded, color: AppColors.primary, size: 22),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Tạo hồ sơ bệnh nhân',
-                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-                              ),
-                              Text(
-                                'Khai báo thông tin người đi khám để lưu vào hệ thống',
-                                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded),
-                          onPressed: () => Navigator.pop(bottomSheetContext),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Họ và tên
-                    TextFormField(
-                      controller: nameCtrl,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: InputDecoration(
-                        labelText: 'Họ và tên bệnh nhân *',
-                        hintText: 'VD: Nguyễn Thị Mai',
-                        prefixIcon: const Icon(Icons.person_outline_rounded, size: 20, color: AppColors.primary),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Số điện thoại
-                    TextFormField(
-                      controller: phoneCtrl,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        labelText: 'Số điện thoại liên hệ *',
-                        hintText: 'VD: 0912345678',
-                        prefixIcon: const Icon(Icons.phone_android_rounded, size: 20, color: AppColors.primary),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Ngày sinh & Giới tính
-                    Row(
-                      children: [
-                        // Ngày sinh
-                        Expanded(
-                          flex: 3,
-                          child: InkWell(
-                            onTap: () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: selectedDob ?? DateTime(1995, 1, 1),
-                                firstDate: DateTime(1940),
-                                lastDate: DateTime.now(),
-                                helpText: 'Chọn ngày sinh',
-                              );
-                              if (picked != null) {
-                                setModalState(() => selectedDob = picked);
-                              }
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey.shade400),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.cake_outlined, size: 18, color: AppColors.primary),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      dobDisplay ?? 'Ngày sinh',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: dobDisplay != null ? FontWeight.w600 : FontWeight.normal,
-                                        color: dobDisplay != null ? AppColors.textPrimary : AppColors.textTertiary,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-
-                        // Giới tính
-                        Expanded(
-                          flex: 2,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey.shade400),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: selectedGender,
-                                isExpanded: true,
-                                icon: const Icon(Icons.arrow_drop_down, color: AppColors.primary),
-                                items: const [
-                                  DropdownMenuItem(value: 'Female', child: Text('Nữ', style: TextStyle(fontSize: 13))),
-                                  DropdownMenuItem(value: 'Male', child: Text('Nam', style: TextStyle(fontSize: 13))),
-                                ],
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    setModalState(() => selectedGender = val);
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Số CCCD
-                    TextFormField(
-                      controller: idCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: 'Số CCCD / CMND / Định danh',
-                        hintText: 'VD: 079198001234 (tùy chọn)',
-                        prefixIcon: const Icon(Icons.badge_outlined, size: 20, color: AppColors.primary),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Địa chỉ
-                    TextFormField(
-                      controller: addrCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Địa chỉ nơi ở',
-                        hintText: 'VD: Phường 5, Quận 3, TP.HCM (tùy chọn)',
-                        prefixIcon: const Icon(Icons.location_on_outlined, size: 20, color: AppColors.primary),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Ghi chú tiếp đón bệnh viện
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF0F7FF),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFD0E1FD)),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.info_outline_rounded, size: 18, color: AppColors.primary),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Chỉ số sinh hiệu (huyết áp, cân nặng, chiều cao) sẽ được nhân viên y tế đo trực tiếp khi bạn đến quầy tiếp đón.',
-                              style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.3),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Submit Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: isSaving
-                            ? null
-                            : () async {
-                                final name = nameCtrl.text.trim();
-                                final phone = phoneCtrl.text.trim();
-
-                                if (name.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Vui lòng nhập họ và tên bệnh nhân!'), backgroundColor: Colors.orange),
-                                  );
-                                  return;
-                                }
-                                if (phone.length < 10) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Số điện thoại không hợp lệ (tối thiểu 10 số)!'), backgroundColor: Colors.orange),
-                                  );
-                                  return;
-                                }
-
-                                setModalState(() => isSaving = true);
-
-                                try {
-                                  final newPatient = await bookingProvider.createAndSelectPatient(
-                                    fullName: name,
-                                    phone: phone,
-                                    dob: selectedDob != null ? DateFormat('yyyy-MM-dd').format(selectedDob!) : null,
-                                    gender: selectedGender,
-                                    nationalId: idCtrl.text.trim().isNotEmpty ? idCtrl.text.trim() : null,
-                                    address: addrCtrl.text.trim().isNotEmpty ? addrCtrl.text.trim() : null,
-                                  );
-
-                                  _fullNameCtrl.text = newPatient.fullName;
-                                  _phoneCtrl.text = newPatient.phone;
-                                  if (newPatient.nationalId != null) _nationalIdCtrl.text = newPatient.nationalId!;
-                                  if (newPatient.address != null) _addressCtrl.text = newPatient.address!;
-
-                                  if (bottomSheetContext.mounted) {
-                                    Navigator.pop(bottomSheetContext);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Đã tạo và chọn hồ sơ bệnh nhân: ${newPatient.fullName}!'),
-                                        backgroundColor: Colors.green,
-                                        behavior: SnackBarBehavior.floating,
-                                      ),
-                                    );
-                                  }
-                                } catch (err) {
-                                  setModalState(() => isSaving = false);
-                                  if (bottomSheetContext.mounted) {
-                                    String cleanMsg = err.toString().replaceAll('ApiException: ', '');
-                                    final statusIdx = cleanMsg.lastIndexOf('(Status:');
-                                    if (statusIdx != -1) cleanMsg = cleanMsg.substring(0, statusIdx).trim();
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(cleanMsg),
-                                        backgroundColor: Colors.red.shade700,
-                                        behavior: SnackBarBehavior.floating,
-                                        duration: const Duration(seconds: 4),
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          elevation: 2,
-                        ),
-                        child: isSaving
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                              )
-                            : const Text(
-                                'Lưu Hồ Sơ & Tiếp Tục Đặt Lịch',
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// Dialog tra cứu hồ sơ cũ theo số điện thoại
-  void _showSearchPatientDialog(BuildContext context, BookingProvider bookingProvider) {
-    final searchCtrl = TextEditingController(text: bookingProvider.phone);
-    bool isSearching = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Row(
-                children: [
-                  Icon(Icons.search_rounded, color: AppColors.primary),
-                  SizedBox(width: 8),
-                  Text('Tìm hồ sơ theo SĐT', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Nhập số điện thoại đã từng đăng ký khám tại bệnh viện:',
-                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: searchCtrl,
-                    keyboardType: TextInputType.phone,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      hintText: 'VD: 0912345678',
-                      prefixIcon: const Icon(Icons.phone_android_rounded, size: 20),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Hủy', style: TextStyle(color: AppColors.textSecondary)),
-                ),
-                ElevatedButton(
-                  onPressed: isSearching
-                      ? null
-                      : () async {
-                          final phone = searchCtrl.text.trim();
-                          if (phone.isEmpty) return;
-
-                          setDialogState(() => isSearching = true);
-                          final found = await bookingProvider.searchAndSelectPatient(phone);
-                          setDialogState(() => isSearching = false);
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-
-                          if (!context.mounted) return;
-
-                          if (found != null) {
-                            _fullNameCtrl.text = found.fullName;
-                            _phoneCtrl.text = found.phone;
-                            if (found.nationalId != null) _nationalIdCtrl.text = found.nationalId!;
-                            if (found.address != null) _addressCtrl.text = found.address!;
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Đã liên kết hồ sơ: ${found.fullName} (${found.phone})!'),
-                                backgroundColor: Colors.green,
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Không tìm thấy hồ sơ cho số $phone. Hãy nhấn "Tạo hồ sơ mới"!'),
-                                backgroundColor: Colors.orange,
-                                behavior: SnackBarBehavior.floating,
-                                action: SnackBarAction(
-                                  label: 'Tạo mới',
-                                  textColor: Colors.white,
-                                  onPressed: () => _showCreatePatientBottomSheet(context, bookingProvider),
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: isSearching
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('Tra cứu'),
-                ),
-              ],
-            );
-          },
-        );
-      },
     );
   }
 
@@ -1674,7 +1105,8 @@ class _BookingScreenState extends State<BookingScreen> {
 
         return Expanded(
           child: InkWell(
-            onTap: () => bookingProvider.setSelectedCategory(cat['id'] as String),
+            onTap: () =>
+                bookingProvider.setSelectedCategory(cat['id'] as String),
             borderRadius: BorderRadius.circular(12),
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 3),
@@ -1695,7 +1127,9 @@ class _BookingScreenState extends State<BookingScreen> {
                     cat['title'] as String,
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w600,
                       color: isSelected ? color : AppColors.textPrimary,
                     ),
                     textAlign: TextAlign.center,
@@ -1750,8 +1184,12 @@ class _BookingScreenState extends State<BookingScreen> {
               child: Row(
                 children: [
                   Icon(
-                    isSelected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
-                    color: isSelected ? AppColors.primary : AppColors.textTertiary,
+                    isSelected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.textTertiary,
                     size: 20,
                   ),
                   const SizedBox(width: 12),
@@ -1763,11 +1201,16 @@ class _BookingScreenState extends State<BookingScreen> {
                           service.name,
                           style: TextStyle(
                             fontSize: 13,
-                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                            color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w600,
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.textPrimary,
                           ),
                         ),
-                        if (service.description != null && service.description!.isNotEmpty) ...[
+                        if (service.description != null &&
+                            service.description!.isNotEmpty) ...[
                           const SizedBox(height: 3),
                           Text(
                             service.description!,
@@ -1798,15 +1241,28 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
-  Widget _buildSpecialtyContextSection(BuildContext context, BookingProvider bookingProvider) {
+  Widget _buildSpecialtyContextSection(
+    BuildContext context,
+    BookingProvider bookingProvider,
+  ) {
     final isPrenatal = bookingProvider.selectedCategory == 'prenatal';
     final isGyn = bookingProvider.selectedCategory == 'gynecology';
 
     final quickSuggestions = isPrenatal
-        ? ['Khám thai định kỳ', 'Đau bụng âm ỉ', 'Nghén nhiều / Mệt mỏi', 'Tái khám theo hẹn']
+        ? [
+            'Khám thai định kỳ',
+            'Đau bụng âm ỉ',
+            'Nghén nhiều / Mệt mỏi',
+            'Tái khám theo hẹn',
+          ]
         : (isGyn
-            ? ['Khám phụ khoa định kỳ', 'Rối loạn kinh nguyệt', 'Viêm ngứa / Khó chịu', 'Tư vấn sức khỏe']
-            : ['Khám định kỳ', 'Tư vấn sức khỏe', 'Tái khám']);
+              ? [
+                  'Khám phụ khoa định kỳ',
+                  'Rối loạn kinh nguyệt',
+                  'Viêm ngứa / Khó chịu',
+                  'Tư vấn sức khỏe',
+                ]
+              : ['Khám định kỳ', 'Tư vấn sức khỏe', 'Tái khám']);
 
     return Container(
       width: double.infinity,
@@ -1821,7 +1277,11 @@ class _BookingScreenState extends State<BookingScreen> {
         children: [
           const Text(
             'Lý do khám hoặc triệu chứng khó chịu (nếu có):',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
           ),
           const SizedBox(height: 10),
 
@@ -1833,11 +1293,19 @@ class _BookingScreenState extends State<BookingScreen> {
               return ActionChip(
                 label: Text(
                   sug,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
                 ),
                 backgroundColor: AppColors.primaryLight,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                side: BorderSide(color: AppColors.primary.withValues(alpha: 0.2)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                side: BorderSide(
+                  color: AppColors.primary.withValues(alpha: 0.2),
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
                 onPressed: () {
                   final current = _notesCtrl.text.trim();
@@ -1857,15 +1325,22 @@ class _BookingScreenState extends State<BookingScreen> {
             controller: _notesCtrl,
             maxLines: 3,
             decoration: InputDecoration(
-              hintText: 'Nhập thêm ghi chú hoặc triệu chứng cần bác sĩ lưu ý...',
-              hintStyle: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
+              hintText:
+                  'Nhập thêm ghi chú hoặc triệu chứng cần bác sĩ lưu ý...',
+              hintStyle: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textTertiary,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide: const BorderSide(color: AppColors.border),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                borderSide: const BorderSide(
+                  color: AppColors.primary,
+                  width: 1.5,
+                ),
               ),
               contentPadding: const EdgeInsets.all(12),
             ),
@@ -1884,7 +1359,11 @@ class _BookingScreenState extends State<BookingScreen> {
             child: const Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.health_and_safety_outlined, size: 18, color: Color(0xFF16A34A)),
+                Icon(
+                  Icons.health_and_safety_outlined,
+                  size: 18,
+                  color: Color(0xFF16A34A),
+                ),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1905,7 +1384,10 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
-  Widget _buildDateSelector(BuildContext context, BookingProvider bookingProvider) {
+  Widget _buildDateSelector(
+    BuildContext context,
+    BookingProvider bookingProvider,
+  ) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     // Bắt đầu từ ngày mai (chỉ cho phép đặt từ ngày mai trở đi)
@@ -1922,7 +1404,8 @@ class _BookingScreenState extends State<BookingScreen> {
             separatorBuilder: (_, index) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               final date = minDate.add(Duration(days: index));
-              final isSelected = selectedDate.year == date.year &&
+              final isSelected =
+                  selectedDate.year == date.year &&
                   selectedDate.month == date.month &&
                   selectedDate.day == date.day;
               final isTomorrow = index == 0;
@@ -1948,7 +1431,9 @@ class _BookingScreenState extends State<BookingScreen> {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: isSelected ? Colors.white70 : AppColors.textSecondary,
+                          color: isSelected
+                              ? Colors.white70
+                              : AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -1957,7 +1442,9 @@ class _BookingScreenState extends State<BookingScreen> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
-                          color: isSelected ? Colors.white : AppColors.textPrimary,
+                          color: isSelected
+                              ? Colors.white
+                              : AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1965,7 +1452,9 @@ class _BookingScreenState extends State<BookingScreen> {
                         DateFormat('MM').format(date),
                         style: TextStyle(
                           fontSize: 10,
-                          color: isSelected ? Colors.white70 : AppColors.textTertiary,
+                          color: isSelected
+                              ? Colors.white70
+                              : AppColors.textTertiary,
                         ),
                       ),
                     ],
@@ -2051,7 +1540,9 @@ class _BookingScreenState extends State<BookingScreen> {
       );
     }
 
-    final hasAvailableSlot = bookingProvider.availableSlots.any((s) => s.isAvailable);
+    final hasAvailableSlot = bookingProvider.availableSlots.any(
+      (s) => s.isAvailable,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2068,12 +1559,20 @@ class _BookingScreenState extends State<BookingScreen> {
             ),
             child: Row(
               children: [
-                Icon(Icons.info_outline_rounded, size: 16, color: Colors.amber.shade900),
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: 16,
+                  color: Colors.amber.shade900,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Các khung giờ hôm nay đã qua giờ khám thực tế. Vui lòng chọn ngày tiếp theo (ngày mai) để đặt lịch.',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.amber.shade900),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.amber.shade900,
+                    ),
                   ),
                 ),
               ],
@@ -2083,56 +1582,76 @@ class _BookingScreenState extends State<BookingScreen> {
           spacing: 8,
           runSpacing: 8,
           children: bookingProvider.availableSlots.map((slot) {
-        final isSelected = bookingProvider.selectedSlot?.timeRange == slot.timeRange;
-        final isAvailable = slot.isAvailable;
+            final isSelected =
+                bookingProvider.selectedSlot?.timeRange == slot.timeRange;
+            final isAvailable = slot.isAvailable;
 
-        return InkWell(
-          onTap: isAvailable ? () => bookingProvider.selectSlot(slot) : null,
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? AppColors.primary
-                  : (!isAvailable ? Colors.grey.shade100 : AppColors.surface),
+            return InkWell(
+              onTap: isAvailable
+                  ? () => bookingProvider.selectSlot(slot)
+                  : null,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: isSelected
-                    ? AppColors.primary
-                    : (!isAvailable ? Colors.grey.shade300 : AppColors.border),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isAvailable ? Icons.access_time_rounded : Icons.block_rounded,
-                  size: 14,
-                  color: isSelected
-                      ? Colors.white
-                      : (!isAvailable ? Colors.grey.shade400 : AppColors.textSecondary),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  slot.timeRange,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.primary
+                      : (!isAvailable
+                            ? Colors.grey.shade100
+                            : AppColors.surface),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
                     color: isSelected
-                        ? Colors.white
-                        : (!isAvailable ? Colors.grey.shade400 : AppColors.textPrimary),
-                    decoration: !isAvailable ? TextDecoration.lineThrough : null,
+                        ? AppColors.primary
+                        : (!isAvailable
+                              ? Colors.grey.shade300
+                              : AppColors.border),
                   ),
                 ),
-              ],
-            ),
-          ),
-        );
-      }).toList(),
-    ),
-  ],
-);
-}
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isAvailable
+                          ? Icons.access_time_rounded
+                          : Icons.block_rounded,
+                      size: 14,
+                      color: isSelected
+                          ? Colors.white
+                          : (!isAvailable
+                                ? Colors.grey.shade400
+                                : AppColors.textSecondary),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      slot.timeRange,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: isSelected
+                            ? Colors.white
+                            : (!isAvailable
+                                  ? Colors.grey.shade400
+                                  : AppColors.textPrimary),
+                        decoration: !isAvailable
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
 
   Widget _buildSummaryCard(BookingProvider bookingProvider) {
     final name = bookingProvider.fullName.trim().isNotEmpty
@@ -2167,13 +1686,17 @@ class _BookingScreenState extends State<BookingScreen> {
           _buildSummaryRow(
             label: 'Bệnh nhân:',
             value: name,
-            valueColor: name.startsWith('Chưa') ? AppColors.textTertiary : AppColors.textPrimary,
+            valueColor: name.startsWith('Chưa')
+                ? AppColors.textTertiary
+                : AppColors.textPrimary,
           ),
           const SizedBox(height: 8),
           _buildSummaryRow(
             label: 'Số điện thoại:',
             value: phone,
-            valueColor: phone.startsWith('Chưa') ? AppColors.textTertiary : AppColors.textPrimary,
+            valueColor: phone.startsWith('Chưa')
+                ? AppColors.textTertiary
+                : AppColors.textPrimary,
           ),
           const SizedBox(height: 8),
           _buildSummaryRow(
@@ -2181,26 +1704,27 @@ class _BookingScreenState extends State<BookingScreen> {
             value: bookingProvider.selectedCategory == 'prenatal'
                 ? 'Khám thai & Quản lý thai kỳ'
                 : (bookingProvider.selectedCategory == 'gynecology'
-                    ? 'Khám phụ khoa & Tầm soát'
-                    : 'Sản - Phụ khoa khác'),
+                      ? 'Khám phụ khoa & Tầm soát'
+                      : 'Sản - Phụ khoa khác'),
             valueColor: AppColors.primary,
           ),
           const SizedBox(height: 8),
           _buildSummaryRow(
             label: 'Dịch vụ khám:',
             value: service?.name ?? 'Chưa chọn dịch vụ',
-            valueColor: service != null ? AppColors.textPrimary : AppColors.textTertiary,
+            valueColor: service != null
+                ? AppColors.textPrimary
+                : AppColors.textTertiary,
           ),
           const SizedBox(height: 8),
-          _buildSummaryRow(
-            label: 'Ngày khám:',
-            value: _formatDateFull(date),
-          ),
+          _buildSummaryRow(label: 'Ngày khám:', value: _formatDateFull(date)),
           const SizedBox(height: 8),
           _buildSummaryRow(
             label: 'Khung giờ:',
             value: slot?.timeRange ?? 'Chưa chọn giờ',
-            valueColor: slot != null ? AppColors.secondary : AppColors.textTertiary,
+            valueColor: slot != null
+                ? AppColors.secondary
+                : AppColors.textTertiary,
           ),
         ],
       ),
@@ -2231,7 +1755,10 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
-  Widget _buildSuccessView(BuildContext context, BookingProvider bookingProvider) {
+  Widget _buildSuccessView(
+    BuildContext context,
+    BookingProvider bookingProvider,
+  ) {
     final result = bookingProvider.bookingSuccessResult!;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -2278,17 +1805,26 @@ class _BookingScreenState extends State<BookingScreen> {
               children: [
                 _buildSummaryRow(
                   label: 'Mã lịch hẹn:',
-                  value: result.id.length >= 8 ? result.id.substring(0, 8).toUpperCase() : result.id,
+                  value: result.id.length >= 8
+                      ? result.id.substring(0, 8).toUpperCase()
+                      : result.id,
                   valueColor: AppColors.primary,
                 ),
                 const Divider(height: 16),
-                _buildSummaryRow(label: 'Bệnh nhân:', value: result.patientName),
+                _buildSummaryRow(
+                  label: 'Bệnh nhân:',
+                  value: result.patientName,
+                ),
                 const SizedBox(height: 8),
-                _buildSummaryRow(label: 'Dịch vụ:', value: result.serviceTypeName),
+                _buildSummaryRow(
+                  label: 'Dịch vụ:',
+                  value: result.serviceTypeName,
+                ),
                 const SizedBox(height: 8),
                 _buildSummaryRow(
                   label: 'Thời gian khám:',
-                  value: DateFormat('HH:mm - dd/MM/yyyy').format(result.scheduledTime),
+                  value: DateFormat('HH:mm - dd/MM/yyyy')
+                      .format(result.scheduledTime),
                   valueColor: AppColors.secondary,
                 ),
                 const SizedBox(height: 8),
@@ -2318,7 +1854,10 @@ class _BookingScreenState extends State<BookingScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text('Về trang chủ', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: const Text(
+                'Về trang chủ',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -2335,7 +1874,10 @@ class _BookingScreenState extends State<BookingScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text('Xem sổ lịch hẹn', style: TextStyle(fontWeight: FontWeight.w600)),
+              child: const Text(
+                'Xem sổ lịch hẹn',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
             ),
           ),
         ],

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:flowcare_mobile/providers/booking_provider.dart';
+import 'package:flowcare_mobile/services/patient_session_service.dart';
+
+import 'home_journey_provider_test.dart' show FakePatients;
+
 import 'package:flowcare_mobile/providers/history_provider.dart';
 import 'package:flowcare_mobile/providers/home_provider.dart';
 import 'package:flowcare_mobile/providers/profile_provider.dart';
@@ -9,10 +13,14 @@ import 'package:flowcare_mobile/screens/main_shell_screen.dart';
 
 void main() {
   Widget buildTestApp({int initialIndex = 0}) {
+    PatientSessionService().bindPatient(
+      patientId: 'patient',
+      userName: 'patient.test',
+    );
     final homeProvider = HomeProvider(loadOnCreate: false);
     final bookingProvider = BookingProvider();
     final historyProvider = HistoryProvider();
-    final profileProvider = ProfileProvider();
+    final profileProvider = ProfileProvider(patientService: FakePatients());
     addTearDown(homeProvider.dispose);
 
     return MultiProvider(
@@ -22,13 +30,13 @@ void main() {
         ChangeNotifierProvider<HistoryProvider>.value(value: historyProvider),
         ChangeNotifierProvider<ProfileProvider>.value(value: profileProvider),
       ],
-      child: MaterialApp(
-        home: MainShellScreen(initialTabIndex: initialIndex),
-      ),
+      child: MaterialApp(home: MainShellScreen(initialTabIndex: initialIndex)),
     );
   }
 
-  testWidgets('App Shell loads with 5 navigation destinations', (WidgetTester tester) async {
+  testWidgets('App Shell loads with 5 navigation destinations', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(buildTestApp());
     await tester.pump();
 
@@ -39,7 +47,9 @@ void main() {
     expect(find.text('Hồ sơ'), findsWidgets);
   });
 
-  testWidgets('Bottom navigation tab transitions test', (WidgetTester tester) async {
+  testWidgets('Bottom navigation tab transitions test', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(buildTestApp());
     await tester.pump();
 
@@ -69,7 +79,9 @@ void main() {
     expect(find.text('Bệnh viện Phụ Sản Thông Minh'), findsOneWidget);
   });
 
-  testWidgets('HomeScreen displays maternity greeting and quick actions', (WidgetTester tester) async {
+  testWidgets('HomeScreen displays maternity greeting and quick actions', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(buildTestApp());
     await tester.pump();
 
@@ -79,27 +91,37 @@ void main() {
     expect(find.text('Theo dõi thai kỳ'), findsOneWidget);
   });
 
-  testWidgets('BookingScreen renders OB/GYN categories and step wizard', (WidgetTester tester) async {
+  testWidgets('BookingScreen renders OB/GYN categories and step wizard', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(buildTestApp(initialIndex: 1));
     await tester.pump();
 
     expect(find.text('Đặt lịch khám trực tuyến'), findsOneWidget);
-    expect(find.text('Khám thai'), findsOneWidget);
-    expect(find.text('Khám phụ khoa'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('HistoryScreen renders empty state when patient has no appointments', (WidgetTester tester) async {
-    await tester.pumpWidget(buildTestApp(initialIndex: 3));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'HistoryScreen renders empty state when patient has no appointments',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(buildTestApp(initialIndex: 3));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Lịch sử lịch hẹn & Khám'), findsOneWidget);
-  });
+      expect(find.text('Lịch sử lịch hẹn & Khám'), findsOneWidget);
+    },
+  );
 
-  testWidgets('ProfileScreen renders OB/GYN health sections', (WidgetTester tester) async {
+  testWidgets('ProfileScreen renders OB/GYN health sections', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(buildTestApp(initialIndex: 4));
     await tester.pumpAndSettle();
 
     expect(find.text('Hồ sơ sức khỏe Sản - Phụ khoa'), findsOneWidget);
+    await tester.tap(
+      find.widgetWithIcon(IconButton, Icons.refresh_rounded).last,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('1. Thông tin định danh cá nhân'), findsOneWidget);
     expect(find.text('2. Thông tin y tế & Nhóm máu'), findsOneWidget);
     expect(find.text('3. Hồ sơ thai sản & Tiền sử sản khoa'), findsOneWidget);

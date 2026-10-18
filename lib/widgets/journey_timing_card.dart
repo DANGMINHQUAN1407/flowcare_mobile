@@ -13,7 +13,12 @@ String journeyMinutes(double? minutes) {
 
 class JourneyTravelHighlight extends StatelessWidget {
   final double? minutes;
-  const JourneyTravelHighlight({super.key, required this.minutes});
+  final bool historical;
+  const JourneyTravelHighlight({
+    super.key,
+    required this.minutes,
+    this.historical = false,
+  });
 
   @override
   Widget build(BuildContext context) => Container(
@@ -35,13 +40,13 @@ class JourneyTravelHighlight extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Di chuyển dự kiến',
-                style: TextStyle(fontSize: 12, color: AppColors.primary),
+              Text(
+                historical ? 'Di chuyển theo kế hoạch' : 'Di chuyển dự kiến',
+                style: const TextStyle(fontSize: 12, color: AppColors.primary),
               ),
               const SizedBox(height: 3),
               Text(
-                minutes == 0
+                minutes == 0 && !historical
                     ? 'Không cần di chuyển'
                     : minutes == null
                     ? 'Chưa có ước tính'
@@ -62,27 +67,37 @@ class JourneyTravelHighlight extends StatelessWidget {
 
 class JourneyStepTimingCard extends StatelessWidget {
   final JourneyStepTiming timing;
-  const JourneyStepTimingCard({super.key, required this.timing});
+  final bool historical;
+  const JourneyStepTimingCard({
+    super.key,
+    required this.timing,
+    this.historical = false,
+  });
 
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      JourneyTravelHighlight(minutes: timing.travelMinutes),
+      JourneyTravelHighlight(
+        minutes: timing.travelMinutes,
+        historical: historical,
+      ),
       const SizedBox(height: 10),
       _row(
         Icons.hourglass_empty_rounded,
-        'Chờ trước dịch vụ dự kiến',
+        historical
+            ? 'Chờ trước dịch vụ theo kế hoạch'
+            : 'Chờ trước dịch vụ dự kiến',
         timing.waitBeforeServiceMinutes,
       ),
       _row(
         Icons.medical_services_outlined,
-        'Thực hiện dự kiến',
+        historical ? 'Thực hiện theo kế hoạch' : 'Thực hiện dự kiến',
         timing.serviceMinutes,
       ),
       _row(
         Icons.science_outlined,
-        'Chờ kết quả dự kiến',
+        historical ? 'Chờ kết quả theo kế hoạch' : 'Chờ kết quả dự kiến',
         timing.resultWaitMinutes,
       ),
       if (timing.elapsedBeforeStartMinutes != null ||
@@ -173,7 +188,12 @@ class JourneyStepTimingCard extends StatelessWidget {
 
 class JourneyTimingSummary extends StatelessWidget {
   final JourneyTiming timing;
-  const JourneyTimingSummary({super.key, required this.timing});
+  final bool historical;
+  const JourneyTimingSummary({
+    super.key,
+    required this.timing,
+    this.historical = false,
+  });
 
   @override
   Widget build(BuildContext context) => Container(
@@ -186,9 +206,11 @@ class JourneyTimingSummary extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Thời gian dự kiến theo lộ trình',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+        Text(
+          historical
+              ? 'Ước tính của lộ trình đã thực hiện'
+              : 'Thời gian dự kiến theo lộ trình',
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 12),
         Row(
@@ -228,13 +250,15 @@ class JourneyTimingSummary extends StatelessWidget {
         ),
         if (timing.totalMinutes != null)
           Text(
-            'Hoàn tất cận lâm sàng dự kiến: ${journeyMinutes(timing.totalMinutes)}',
+            '${historical ? 'Tổng theo kế hoạch' : 'Hoàn tất cận lâm sàng dự kiến'}: ${journeyMinutes(timing.totalMinutes)}',
             style: const TextStyle(fontSize: 12, height: 1.5),
           ),
         const SizedBox(height: 8),
-        const Text(
-          'Di chuyển là ước tính theo các chặng được phân công. Các khoảng chờ kết quả có thể trùng với lúc thực hiện dịch vụ khác.',
-          style: TextStyle(
+        Text(
+          historical
+              ? 'Đây là ước tính theo kế hoạch, không phải thời gian thực tế. Số liệu thực tế nằm trong từng bước nếu đã được ghi nhận.'
+              : 'Di chuyển là ước tính theo các chặng được phân công. Các khoảng chờ kết quả có thể trùng với lúc thực hiện dịch vụ khác.',
+          style: const TextStyle(
             fontSize: 10,
             height: 1.5,
             color: AppColors.textSecondary,

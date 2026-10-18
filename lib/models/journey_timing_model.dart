@@ -104,7 +104,7 @@ class JourneyTiming {
         ),
         actualResultWaitMinutes: _elapsed(
           service.actualEndTime,
-          service.resultReadyTime,
+          service.publishedResultAt,
         ),
       );
     }

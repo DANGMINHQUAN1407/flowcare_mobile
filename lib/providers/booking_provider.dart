@@ -1,5 +1,9 @@
 import 'package:flutter/foundation.dart';
+
+import '../core/network/api_exceptions.dart';
+
 import 'package:intl/intl.dart';
+
 import '../models/appointment_model.dart';
 import '../models/follow_up_order_model.dart';
 import '../models/medical_record_model.dart';
@@ -24,11 +28,30 @@ class BookingProvider extends ChangeNotifier {
     ServiceTypeService? serviceTypeService,
     FollowUpService? followUpService,
     PatientSessionService? sessionService,
-  })  : _patientService = patientService ?? PatientService(),
-        _appointmentService = appointmentService ?? AppointmentService(),
-        _serviceTypeService = serviceTypeService ?? ServiceTypeService(),
-        _followUpService = followUpService ?? FollowUpService(),
-        _sessionService = sessionService ?? PatientSessionService();
+  }) : _patientService = patientService ?? PatientService(),
+       _appointmentService = appointmentService ?? AppointmentService(),
+       _serviceTypeService = serviceTypeService ?? ServiceTypeService(),
+       _followUpService = followUpService ?? FollowUpService(),
+       _sessionService = sessionService ?? PatientSessionService() {
+    _boundSessionVersion = _sessionService.version;
+  }
+
+  late final int _boundSessionVersion;
+  bool _disposed = false;
+  int _slotsVersion = 0;
+  String? _followUpError;
+  String? get followUpError => _followUpError;
+  bool get _isCurrent =>
+      !_disposed && _sessionService.version == _boundSessionVersion;
+  void _notify() {
+    if (_isCurrent) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   // State
   PatientModel? _patient;
@@ -68,7 +91,8 @@ class BookingProvider extends ChangeNotifier {
   String? _obstetricHistoryNotes;
   String _fetalMovementStatus = 'Thai máy tốt (>= 4 lần/giờ - Bình thường)';
   String _vatVaccine = 'Đã tiêm VAT 1 (Tuần 20-24)';
-  String _prenatalVisitReason = 'Khám thai định kỳ & Siêu âm Thai 4D / Doppler Màu';
+  String _prenatalVisitReason =
+      'Khám thai định kỳ & Siêu âm Thai 4D / Doppler Màu';
   final List<String> _selectedObstetricHistory = ['Con so (Lần đầu mang thai)'];
   final List<String> _selectedWarningSigns = [];
 
@@ -179,14 +203,20 @@ class BookingProvider extends ChangeNotifier {
 
   /// Check if patient profile already contains verified baseline health data
   bool get hasProfileHealthData =>
+      _isCurrent &&
       _patient != null &&
+      _patient!.id == _sessionService.patientId &&
       ((_patient!.bloodGroup != null && _patient!.bloodGroup!.isNotEmpty) ||
           (_patient!.allergies != null && _patient!.allergies!.isNotEmpty) ||
-          (_patient!.medicalHistory != null && _patient!.medicalHistory!.isNotEmpty));
+          (_patient!.medicalHistory != null &&
+              _patient!.medicalHistory!.isNotEmpty));
 
   /// Can submit booking check - bắt buộc phải đã lưu/chọn hồ sơ bệnh nhân
   bool get canSubmit =>
+      !_sessionService.isDemo &&
+      _isCurrent &&
       _patient != null &&
+      _patient!.id == _sessionService.patientId &&
       _patient!.fullName.trim().isNotEmpty &&
       _patient!.phone.trim().isNotEmpty &&
       _selectedService != null &&
@@ -196,6 +226,9 @@ class BookingProvider extends ChangeNotifier {
 
   // Setters & Patient Profile Management
   void selectPatient(PatientModel p) {
+    if (!_isCurrent || p.id != _sessionService.patientId) {
+      throw ForbiddenException();
+    }
     _patient = p;
     _fullName = p.fullName;
     _phone = p.phone;
@@ -209,15 +242,22 @@ class BookingProvider extends ChangeNotifier {
     _sessionService.setPatientId(p.id);
 
     // Also reload pending follow up orders for this patient
-    _followUpService.getFollowUpOrdersByPatient(p.id).then((orders) {
-      _pendingFollowUpOrders = orders;
-      notifyListeners();
-    }).catchError((_) {
-      _pendingFollowUpOrders = [];
-      notifyListeners();
-    });
+    _followUpError = null;
+    _followUpService
+        .getFollowUpOrdersByPatient(p.id)
+        .then((orders) {
+          if (!_isCurrent) return;
+          _pendingFollowUpOrders = orders;
+          _notify();
+        })
+        .catchError((Object error) {
+          if (!_isCurrent) return;
+          _followUpError = patientErrorMessage(error);
+          _pendingFollowUpOrders = [];
+          _notify();
+        });
 
-    notifyListeners();
+    _notify();
   }
 
   void clearSelectedPatient() {
@@ -228,118 +268,37 @@ class BookingProvider extends ChangeNotifier {
     _nationalId = null;
     _address = null;
     _pendingFollowUpOrders = [];
-    notifyListeners();
-  }
-
-  /// Create a new patient profile and immediately select it for booking
-  Future<PatientModel> createAndSelectPatient({
-    required String fullName,
-    required String phone,
-    String? dob,
-    String? gender,
-    String? nationalId,
-    String? address,
-    String? bloodGroup,
-    String? rhFactor,
-    num? heightCm,
-    num? prePregnancyWeight,
-    String? allergies,
-    String? medicalHistory,
-  }) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      final newPatient = await _patientService.createPatient(
-        fullName: fullName.trim(),
-        phone: phone.trim(),
-        dob: dob,
-        gender: gender ?? 'Female',
-        nationalId: nationalId?.trim(),
-        address: address?.trim(),
-        bloodGroup: bloodGroup ?? 'O',
-        rhFactor: rhFactor ?? 'Rh+',
-        heightCm: heightCm ?? 162,
-        prePregnancyWeight: prePregnancyWeight ?? 52,
-        allergies: allergies ?? 'Không ghi nhận dị ứng thuốc',
-        medicalHistory: medicalHistory ?? 'Bình thường, không bệnh mạn tính',
-      );
-
-      selectPatient(newPatient);
-      _isLoading = false;
-      notifyListeners();
-      return newPatient;
-    } catch (e) {
-      final errStr = e.toString();
-      // Auto-fallback: If phone number is already registered in DB, load existing patient profile
-      if (errStr.contains('DUPLICATE_PHONE') || errStr.contains('đã tồn tại') || errStr.contains('already exists')) {
-        try {
-          final existingPatient = await _patientService.searchPatientByPhone(phone.trim());
-          if (existingPatient != null) {
-            selectPatient(existingPatient);
-            _isLoading = false;
-            notifyListeners();
-            return existingPatient;
-          }
-        } catch (_) {}
-      }
-
-      String cleanMsg = errStr.replaceAll('ApiException: ', '');
-      final statusIdx = cleanMsg.lastIndexOf('(Status:');
-      if (statusIdx != -1) cleanMsg = cleanMsg.substring(0, statusIdx).trim();
-
-      _isLoading = false;
-      _errorMessage = cleanMsg;
-      notifyListeners();
-      rethrow;
-    }
-  }
-
-  /// Search patient by phone and select if found
-  Future<PatientModel?> searchAndSelectPatient(String phoneToSearch) async {
-    final cleanPhone = phoneToSearch.trim();
-    if (cleanPhone.isEmpty) return null;
-
-    try {
-      final found = await _patientService.searchPatientByPhone(cleanPhone);
-      if (found != null) {
-        selectPatient(found);
-      }
-      return found;
-    } catch (_) {
-      return null;
-    }
+    _notify();
   }
 
   void setIsFollowUp(bool val) {
     _isFollowUp = val;
-    notifyListeners();
+    _notify();
   }
 
   void setFullName(String val) {
     _fullName = val;
-    notifyListeners();
+    _notify();
   }
 
   void setPhone(String val) {
     _phone = val.trim();
-    notifyListeners();
+    _notify();
   }
 
   void setDob(DateTime? val) {
     _dob = val;
-    notifyListeners();
+    _notify();
   }
 
   void setNationalId(String? val) {
     _nationalId = val?.trim();
-    notifyListeners();
+    _notify();
   }
 
   void setAddress(String? val) {
     _address = val?.trim();
-    notifyListeners();
+    _notify();
   }
 
   void setSelectedCategory(String category) {
@@ -351,7 +310,7 @@ class BookingProvider extends ChangeNotifier {
     if (matching.isNotEmpty) {
       selectService(matching.first);
     }
-    notifyListeners();
+    _notify();
   }
 
   // Follow-up setup helper from a previous medical record
@@ -360,9 +319,11 @@ class BookingProvider extends ChangeNotifier {
     _originalDoctorName = record.doctorName;
     _previousDiagnosis = record.diagnosis;
     _followUpAdvice = record.doctorAdvice;
-    _recommendedFollowUpDate = record.followUpDate ?? DateTime.now().add(const Duration(days: 14));
+    _recommendedFollowUpDate =
+        record.followUpDate ?? DateTime.now().add(const Duration(days: 14));
 
-    if (_recommendedFollowUpDate != null && _recommendedFollowUpDate!.isAfter(DateTime.now())) {
+    if (_recommendedFollowUpDate != null &&
+        _recommendedFollowUpDate!.isAfter(DateTime.now())) {
       _selectedDate = _recommendedFollowUpDate!;
     } else {
       _selectedDate = DateTime.now().add(const Duration(days: 1));
@@ -381,7 +342,8 @@ class BookingProvider extends ChangeNotifier {
       _gestationalWeeks = record.vitalSigns!.gestationalWeeks;
     }
 
-    _clinicalNotes = 'Tái khám theo hẹn của ${record.doctorName} (Chẩn đoán trước: ${record.diagnosis})';
+    _clinicalNotes =
+        'Tái khám theo hẹn của ${record.doctorName} (Chẩn đoán trước: ${record.diagnosis})';
 
     // Refresh matching service and fetch slots
     final matching = filteredServices;
@@ -389,11 +351,14 @@ class BookingProvider extends ChangeNotifier {
       _selectedService = matching.first;
       _fetchSlots();
     }
-    notifyListeners();
+    _notify();
   }
 
   // Follow-up setup helper from a follow-up order
   void setupFollowUpFromOrder(FollowUpOrderModel order) {
+    if (!_isCurrent || order.patientId != _sessionService.patientId) {
+      throw ForbiddenException();
+    }
     _isFollowUp = true;
     _followUpOrderId = order.id;
     _originalDoctorId = order.originalDoctorId;
@@ -408,14 +373,15 @@ class BookingProvider extends ChangeNotifier {
       _selectedDate = defaultBookingDate;
     }
 
-    _clinicalNotes = 'Tái khám theo phiếu chỉ định #${order.id.length >= 8 ? order.id.substring(0, 8).toUpperCase() : order.id} của BS. ${order.originalDoctorName}';
+    _clinicalNotes =
+        'Tái khám theo phiếu chỉ định #${order.id.length >= 8 ? order.id.substring(0, 8).toUpperCase() : order.id} của BS. ${order.originalDoctorName}';
 
     final matching = filteredServices;
     if (matching.isNotEmpty) {
       _selectedService = matching.first;
       _fetchSlots();
     }
-    notifyListeners();
+    _notify();
   }
 
   void clearFollowUp() {
@@ -426,23 +392,23 @@ class BookingProvider extends ChangeNotifier {
     _previousDiagnosis = null;
     _followUpAdvice = null;
     _recommendedFollowUpDate = null;
-    notifyListeners();
+    _notify();
   }
 
   // Obstetric setters
   void setPregnancyType(String type) {
     _pregnancyType = type;
-    notifyListeners();
+    _notify();
   }
 
   void setVatVaccine(String vat) {
     _vatVaccine = vat;
-    notifyListeners();
+    _notify();
   }
 
   void setPrenatalVisitReason(String reason) {
     _prenatalVisitReason = reason;
-    notifyListeners();
+    _notify();
   }
 
   void toggleObstetricHistory(String item) {
@@ -451,17 +417,17 @@ class BookingProvider extends ChangeNotifier {
     } else {
       _selectedObstetricHistory.add(item);
     }
-    notifyListeners();
+    _notify();
   }
 
   void setGestationalWeeks(int? weeks) {
     _gestationalWeeks = weeks;
-    notifyListeners();
+    _notify();
   }
 
   void setGestationalDays(int? days) {
     _gestationalDays = days;
-    notifyListeners();
+    _notify();
   }
 
   void setLmp(DateTime? date) {
@@ -476,12 +442,12 @@ class BookingProvider extends ChangeNotifier {
         _gestationalDays = diffDays % 7;
       }
     }
-    notifyListeners();
+    _notify();
   }
 
   void setEdd(DateTime? date) {
     _edd = date;
-    notifyListeners();
+    _notify();
   }
 
   void setPara({int? g, int? p, int? a, int? l}) {
@@ -489,17 +455,17 @@ class BookingProvider extends ChangeNotifier {
     if (p != null) _para = p;
     if (a != null) _abortion = a;
     if (l != null) _living = l;
-    notifyListeners();
+    _notify();
   }
 
   void setObstetricHistoryNotes(String? val) {
     _obstetricHistoryNotes = val;
-    notifyListeners();
+    _notify();
   }
 
   void setFetalMovementStatus(String status) {
     _fetalMovementStatus = status;
-    notifyListeners();
+    _notify();
   }
 
   void toggleWarningSign(String sign) {
@@ -508,28 +474,28 @@ class BookingProvider extends ChangeNotifier {
     } else {
       _selectedWarningSigns.add(sign);
     }
-    notifyListeners();
+    _notify();
   }
 
   // Gynecological setters
   void setGynVisitReason(String? val) {
     _gynVisitReason = val;
-    notifyListeners();
+    _notify();
   }
 
   void setMenstrualCycle(String val) {
     _menstrualCycle = val;
-    notifyListeners();
+    _notify();
   }
 
   void setLastPeriodDate(DateTime? date) {
     _lastPeriodDate = date;
-    notifyListeners();
+    _notify();
   }
 
   void setContraceptiveMethod(String? val) {
     _contraceptiveMethod = val;
-    notifyListeners();
+    _notify();
   }
 
   void toggleGynSymptom(String symptom) {
@@ -538,12 +504,12 @@ class BookingProvider extends ChangeNotifier {
     } else {
       _selectedGynSymptoms.add(symptom);
     }
-    notifyListeners();
+    _notify();
   }
 
   void setClinicalNotes(String? val) {
     _clinicalNotes = val;
-    notifyListeners();
+    _notify();
   }
 
   /// Initializes booking screen data
@@ -551,48 +517,30 @@ class BookingProvider extends ChangeNotifier {
     _isLoading = true;
     _errorMessage = null;
     _bookingSuccessResult = null;
-    notifyListeners();
+    _notify();
 
     try {
-      // 1. If phone passed, prefetch patient profile to populate administrative and health data
-      final targetPhone = defaultPhone ?? _sessionService.currentPhone;
-      if (targetPhone.isNotEmpty) {
-        _phone = targetPhone;
-        try {
-          _patient = await _patientService.searchPatientByPhone(targetPhone);
-          if (_patient != null) {
-            _fullName = _patient!.fullName;
-            _dob = _patient!.dob != null ? DateTime.tryParse(_patient!.dob!) : _dob;
-            _nationalId = _patient!.nationalId ?? _nationalId;
-            _address = _patient!.address ?? _address;
-            if (_patient!.gestationalWeeks != null) {
-              _gestationalWeeks = _patient!.gestationalWeeks;
-            }
-
-            // Fetch pending follow-up orders for this patient
-            try {
-              _pendingFollowUpOrders = await _followUpService.getFollowUpOrdersByPatient(_patient!.id);
-            } catch (_) {
-              _pendingFollowUpOrders = [];
-            }
-          } else {
-            clearSelectedPatient();
-          }
-        } catch (_) {
-          // Bỏ qua nếu chưa có quyền truy cập hoặc 401, cho phép khách vãng lai đặt lịch bình thường
-          clearSelectedPatient();
-        }
-      } else {
-        clearSelectedPatient();
+      if (!_isCurrent || !_sessionService.isAuthenticated) {
+        throw UnauthorizedException();
       }
+      final profile = await _patientService.getMyProfile();
+      if (!_isCurrent) return;
+      if (profile == null) {
+        throw ApiException('Chưa tải được hồ sơ để đặt lịch.');
+      }
+      selectPatient(profile);
 
       // 2. Fetch live services from BE
-      _services = await _serviceTypeService.getServiceTypes();
+      final services = await _serviceTypeService.getServiceTypes();
+      if (!_isCurrent) return;
+      _services = services;
       _isServiceTypeDependencyMissing = _services.isEmpty;
 
       // Select first matching service by category
       final matching = filteredServices;
-      if (matching.isNotEmpty && (_selectedService == null || !matching.any((s) => s.id == _selectedService?.id))) {
+      if (matching.isNotEmpty &&
+          (_selectedService == null ||
+              !matching.any((s) => s.id == _selectedService?.id))) {
         _selectedService = matching.first;
       } else if (_services.isNotEmpty && _selectedService == null) {
         _selectedService = _services.first;
@@ -608,10 +556,10 @@ class BookingProvider extends ChangeNotifier {
         await _fetchSlots();
       }
     } catch (e) {
-      _errorMessage = 'Lỗi tải danh mục dịch vụ khám: ${e.toString()}';
+      _errorMessage = patientErrorMessage(e);
     } finally {
       _isLoading = false;
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -620,7 +568,7 @@ class BookingProvider extends ChangeNotifier {
     if (_selectedService?.id == service.id) return;
     _selectedService = service;
     _selectedSlot = null;
-    notifyListeners();
+    _notify();
     await _fetchSlots();
   }
 
@@ -640,7 +588,7 @@ class BookingProvider extends ChangeNotifier {
 
     _selectedDate = normalizedDate;
     _selectedSlot = null;
-    notifyListeners();
+    _notify();
     await _fetchSlots();
   }
 
@@ -648,7 +596,7 @@ class BookingProvider extends ChangeNotifier {
   void selectSlot(AppointmentSlotModel slot) {
     if (!slot.isAvailable) return;
     _selectedSlot = slot;
-    notifyListeners();
+    _notify();
   }
 
   /// Internal slot fetch
@@ -658,22 +606,28 @@ class BookingProvider extends ChangeNotifier {
       return;
     }
 
+    final version = ++_slotsVersion;
     _isSlotsLoading = true;
     _slotsErrorMessage = null;
-    notifyListeners();
+    _notify();
 
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
-      _availableSlots = await _appointmentService.getAvailableSlots(
+      final slots = await _appointmentService.getAvailableSlots(
         serviceTypeId: _selectedService!.id,
         date: dateStr,
       );
+      if (!_isCurrent || version != _slotsVersion) return;
+      _availableSlots = slots;
     } catch (e) {
+      if (!_isCurrent || version != _slotsVersion) return;
       _slotsErrorMessage = 'Không thể tải khung giờ khám: ${e.toString()}';
       _availableSlots = [];
     } finally {
-      _isSlotsLoading = false;
-      notifyListeners();
+      if (_isCurrent && version == _slotsVersion) {
+        _isSlotsLoading = false;
+        _notify();
+      }
     }
   }
 
@@ -688,12 +642,14 @@ class BookingProvider extends ChangeNotifier {
 
     _isSubmitting = true;
     _errorMessage = null;
-    notifyListeners();
+    _notify();
 
     try {
       // 1. Kiểm tra bắt buộc phải có hồ sơ đã được người dùng lưu
       if (_patient == null) {
-        throw Exception('Vui lòng lưu hồ sơ bệnh nhân trước khi đặt lịch khám.');
+        throw Exception(
+          'Vui lòng lưu hồ sơ bệnh nhân trước khi đặt lịch khám.',
+        );
       }
 
       final currentPatient = _patient!;
@@ -701,8 +657,12 @@ class BookingProvider extends ChangeNotifier {
       _patient = currentPatient.copyWith(
         gestationalWeeks: _gestationalWeeks ?? currentPatient.gestationalWeeks,
         para: 'G$_gravida P$_para A$_abortion L$_living',
-        lmp: _lmp != null ? DateFormat('yyyy-MM-dd').format(_lmp!) : currentPatient.lmp,
-        edd: _edd != null ? DateFormat('yyyy-MM-dd').format(_edd!) : currentPatient.edd,
+        lmp: _lmp != null
+            ? DateFormat('yyyy-MM-dd').format(_lmp!)
+            : currentPatient.lmp,
+        edd: _edd != null
+            ? DateFormat('yyyy-MM-dd').format(_edd!)
+            : currentPatient.edd,
       );
 
       _sessionService.setPhone(_phone.trim());
@@ -719,11 +679,12 @@ class BookingProvider extends ChangeNotifier {
         doctorId: _originalDoctorId,
       );
 
+      if (!_isCurrent) return false;
       _bookingSuccessResult = result;
       _existingAppointment = result;
       _hasExistingAppointment = true;
       _isSubmitting = false;
-      notifyListeners();
+      _notify();
       return true;
     } catch (e) {
       String cleanMsg = e.toString().replaceAll('ApiException: ', '');
@@ -732,7 +693,7 @@ class BookingProvider extends ChangeNotifier {
 
       _errorMessage = cleanMsg;
       _isSubmitting = false;
-      notifyListeners();
+      _notify();
       return false;
     }
   }
@@ -766,7 +727,7 @@ class BookingProvider extends ChangeNotifier {
     _selectedGynSymptoms.clear();
     _gynVisitReason = null;
     _clinicalNotes = null;
-    notifyListeners();
+    _notify();
   }
 
   /// Clears patient session and resets all booking form states on logout
@@ -775,4 +736,3 @@ class BookingProvider extends ChangeNotifier {
     resetBooking();
   }
 }
-

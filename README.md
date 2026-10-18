@@ -14,9 +14,11 @@
   * Tự động đồng bộ với hệ thống Tiếp đón & Điều phối AI của bệnh viện sau khi check-in.
   * Hiển thị số thứ tự (STT), phòng khám cụ thể (Ví dụ: `Phòng khám Sản VIP 1 - P.301`).
   * Đo đếm thời gian chờ ước tính (ETA) và tiến trình khám từng bước.
-* **🎫 Tra Cứu Phiếu Khám Nhanh (Quick Ticket Lookup):**
-  * Tra cứu lượt khám, số thứ tự và mã xác nhận theo Số điện thoại.
-  * Hỗ trợ chuyển đổi nhanh tài khoản thử nghiệm trên cùng thiết bị.
+* **🔐 Tài khoản bệnh nhân:**
+  * Khách mới chọn **Đăng ký tài khoản** trên mobile; số điện thoại là tên đăng nhập.
+  * Đăng ký qua API BE, sau đó đăng nhập để đặt lịch và xem đúng hồ sơ cá nhân.
+  * Khách đã có hồ sơ từ tiếp tân cần được cấp tài khoản liên kết hồ sơ, tránh đăng ký trùng.
+  * Đăng xuất hoặc hết phiên sẽ xóa phiên và dữ liệu đang xem; đã bỏ lối demo Hạ Chi.
 * **🤰 Theo Dõi Thai Kỳ & Sức Khỏe Mẹ Bé (Pregnancy Tracker):**
   * Tính toán tuần thai, ngày dự sinh (EDD), mốc khám thai quan trọng.
   * Hồ sơ tiền sử sản khoa chuẩn quốc tế PARA (G P A L).
