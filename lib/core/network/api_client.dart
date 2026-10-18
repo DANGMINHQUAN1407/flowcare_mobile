@@ -1,7 +1,9 @@
-import 'dart:async';
+import 'dart:async' as async;
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:http/http.dart' as http;
+
 import '../constants/api_endpoints.dart';
 import '../constants/app_constants.dart';
 import 'api_exceptions.dart';
@@ -12,56 +14,31 @@ class ApiClient {
   final http.Client _client;
   final Duration timeout;
 
-  ApiClient({
-    String? baseUrl,
-    http.Client? client,
-    Duration? timeout,
-  })  : baseUrl = baseUrl ?? ApiEndpoints.defaultBaseUrl,
-        _client = client ?? http.Client(),
-        timeout = timeout ?? const Duration(seconds: AppConstants.connectTimeoutSeconds);
+  ApiClient({String? baseUrl, http.Client? client, Duration? timeout})
+    : baseUrl = baseUrl ?? ApiEndpoints.defaultBaseUrl,
+      _client = client ?? http.Client(),
+      timeout =
+          timeout ??
+          const Duration(seconds: AppConstants.receiveTimeoutSeconds);
 
-  static String? authToken;
+  static String? _authToken;
+  static String? get authToken => _authToken;
+  static bool _readOnlyDemo = false;
+  static int _sessionVersion = 0;
+  static int get sessionVersion => _sessionVersion;
+  static void Function()? onUnauthorized;
 
-  static void setAuthToken(String? token) {
-    authToken = token;
+  static void setAuthToken(String? token, {bool readOnlyDemo = false}) {
+    _authToken = token;
+    _readOnlyDemo = token != null && readOnlyDemo;
+    _sessionVersion++;
   }
 
-  /// Tự động lấy Token đăng nhập ngầm từ BE với tài khoản tiếp tân để phục vụ đặt lịch online
   static Future<void> ensureAuthenticated({String? baseUrl}) async {
-    if (authToken != null && authToken!.trim().isNotEmpty) return;
-    final client = http.Client();
-    try {
-      final uri = Uri.parse('${baseUrl ?? ApiEndpoints.defaultBaseUrl}/auth/login');
-      final response = await client.post(
-        uri,
-        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-        body: jsonEncode({'userName': 'receptionist.test', 'password': 'FlowCare@2026'}),
-      ).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-        if (decoded is Map<String, dynamic> && decoded['data'] != null) {
-          final token = decoded['data']['accessToken']?.toString();
-          if (token != null && token.isNotEmpty) {
-            authToken = token;
-          }
-        }
-      }
-    } catch (_) {
-      // Bỏ qua nếu mất kết nối mạng
-    } finally {
-      client.close();
-    }
+    if (authToken == null || authToken!.isEmpty) throw UnauthorizedException();
   }
 
   void close() => _client.close();
-
-  Map<String, String> get _defaultHeaders => {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        if (authToken != null && authToken!.trim().isNotEmpty)
-          'Authorization': 'Bearer ${authToken!.trim()}',
-      };
 
   Uri _buildUri(String path, [Map<String, dynamic>? queryParameters]) {
     final cleanPath = path.startsWith('/') ? path : '/$path';
@@ -87,34 +64,15 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Map<String, String>? headers,
     T Function(dynamic json)? fromJsonT,
-  }) async {
-    try {
-      if (authToken == null || authToken!.isEmpty) {
-        await ensureAuthenticated(baseUrl: baseUrl);
-      }
-      final uri = _buildUri(path, queryParameters);
-      var response = await _client
-          .get(uri, headers: {..._defaultHeaders, ...?headers})
-          .timeout(timeout);
-
-      if (response.statusCode == 401) {
-        authToken = null;
-        await ensureAuthenticated(baseUrl: baseUrl);
-        response = await _client
-            .get(uri, headers: {..._defaultHeaders, ...?headers})
-            .timeout(timeout);
-      }
-
-      return _handleResponse<T>(response, fromJsonT);
-    } on SocketException {
-      throw NetworkException();
-    } on TimeoutException {
-      throw TimeoutException();
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('Lỗi không xác định khi kết nối: ${e.toString()}');
-    }
-  }
+    bool requiresAuth = true,
+  }) => _send(
+    'GET',
+    path,
+    queryParameters: queryParameters,
+    headers: headers,
+    fromJsonT: fromJsonT,
+    requiresAuth: requiresAuth,
+  );
 
   Future<BaseResponse<T>> post<T>(
     String path, {
@@ -122,42 +80,16 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Map<String, String>? headers,
     T Function(dynamic json)? fromJsonT,
-  }) async {
-    try {
-      if (authToken == null || authToken!.isEmpty) {
-        await ensureAuthenticated(baseUrl: baseUrl);
-      }
-      final uri = _buildUri(path, queryParameters);
-      var response = await _client
-          .post(
-            uri,
-            headers: {..._defaultHeaders, ...?headers},
-            body: body != null ? jsonEncode(body) : null,
-          )
-          .timeout(timeout);
-
-      if (response.statusCode == 401) {
-        authToken = null;
-        await ensureAuthenticated(baseUrl: baseUrl);
-        response = await _client
-            .post(
-              uri,
-              headers: {..._defaultHeaders, ...?headers},
-              body: body != null ? jsonEncode(body) : null,
-            )
-            .timeout(timeout);
-      }
-
-      return _handleResponse<T>(response, fromJsonT);
-    } on SocketException {
-      throw NetworkException();
-    } on TimeoutException {
-      throw TimeoutException();
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('Lỗi không xác định khi gửi dữ liệu: ${e.toString()}');
-    }
-  }
+    bool requiresAuth = true,
+  }) => _send(
+    'POST',
+    path,
+    body: body,
+    queryParameters: queryParameters,
+    headers: headers,
+    fromJsonT: fromJsonT,
+    requiresAuth: requiresAuth,
+  );
 
   Future<BaseResponse<T>> put<T>(
     String path, {
@@ -165,42 +97,16 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Map<String, String>? headers,
     T Function(dynamic json)? fromJsonT,
-  }) async {
-    try {
-      if (authToken == null || authToken!.isEmpty) {
-        await ensureAuthenticated(baseUrl: baseUrl);
-      }
-      final uri = _buildUri(path, queryParameters);
-      var response = await _client
-          .put(
-            uri,
-            headers: {..._defaultHeaders, ...?headers},
-            body: body != null ? jsonEncode(body) : null,
-          )
-          .timeout(timeout);
-
-      if (response.statusCode == 401) {
-        authToken = null;
-        await ensureAuthenticated(baseUrl: baseUrl);
-        response = await _client
-            .put(
-              uri,
-              headers: {..._defaultHeaders, ...?headers},
-              body: body != null ? jsonEncode(body) : null,
-            )
-            .timeout(timeout);
-      }
-
-      return _handleResponse<T>(response, fromJsonT);
-    } on SocketException {
-      throw NetworkException();
-    } on TimeoutException {
-      throw TimeoutException();
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('Lỗi không xác định khi cập nhật dữ liệu: ${e.toString()}');
-    }
-  }
+    bool requiresAuth = true,
+  }) => _send(
+    'PUT',
+    path,
+    body: body,
+    queryParameters: queryParameters,
+    headers: headers,
+    fromJsonT: fromJsonT,
+    requiresAuth: requiresAuth,
+  );
 
   Future<BaseResponse<T>> patch<T>(
     String path, {
@@ -208,40 +114,65 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Map<String, String>? headers,
     T Function(dynamic json)? fromJsonT,
+    bool requiresAuth = true,
+  }) => _send(
+    'PATCH',
+    path,
+    body: body,
+    queryParameters: queryParameters,
+    headers: headers,
+    fromJsonT: fromJsonT,
+    requiresAuth: requiresAuth,
+  );
+
+  Future<BaseResponse<T>> _send<T>(
+    String method,
+    String path, {
+    dynamic body,
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+    T Function(dynamic json)? fromJsonT,
+    required bool requiresAuth,
   }) async {
+    final version = _sessionVersion;
+    final token = authToken;
     try {
-      if (authToken == null || authToken!.isEmpty) {
-        await ensureAuthenticated(baseUrl: baseUrl);
+      if (_readOnlyDemo && method != 'GET' && path != '/auth/login') {
+        throw ForbiddenException(
+          'Phiên chỉ xem không thể tạo hoặc sửa dữ liệu.',
+        );
       }
-      final uri = _buildUri(path, queryParameters);
-      var response = await _client
-          .patch(
-            uri,
-            headers: {..._defaultHeaders, ...?headers},
-            body: body != null ? jsonEncode(body) : null,
-          )
-          .timeout(timeout);
-
-      if (response.statusCode == 401) {
-        authToken = null;
-        await ensureAuthenticated(baseUrl: baseUrl);
-        response = await _client
-            .patch(
-              uri,
-              headers: {..._defaultHeaders, ...?headers},
-              body: body != null ? jsonEncode(body) : null,
-            )
-            .timeout(timeout);
+      if (requiresAuth) await ensureAuthenticated();
+      final request = http.Request(method, _buildUri(path, queryParameters))
+        ..headers.addAll({
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          if (requiresAuth) 'Authorization': 'Bearer $token',
+          ...?headers,
+        });
+      if (body != null) request.body = jsonEncode(body);
+      final response = await (() async => http.Response.fromStream(
+        await _client.send(request),
+      ))().timeout(timeout);
+      if (requiresAuth && version != _sessionVersion) {
+        throw SessionChangedException();
       }
-
+      if (requiresAuth && response.statusCode == 401) {
+        setAuthToken(null);
+        onUnauthorized?.call();
+        throw UnauthorizedException();
+      }
       return _handleResponse<T>(response, fromJsonT);
     } on SocketException {
       throw NetworkException();
-    } on TimeoutException {
+    } on http.ClientException {
+      throw NetworkException();
+    } on async.TimeoutException {
       throw TimeoutException();
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('Lỗi không xác định khi cập nhật: ${e.toString()}');
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw ApiException('Máy chủ trả dữ liệu không hợp lệ. Vui lòng thử lại.');
     }
   }
 
@@ -258,9 +189,18 @@ class ApiClient {
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       if (decodedBody is Map<String, dynamic>) {
+        if (decodedBody['success'] != true) {
+          throw ServerException(
+            'Máy chủ chưa xác nhận yêu cầu thành công.',
+            statusCode: response.statusCode,
+          );
+        }
         return BaseResponse.fromJson(decodedBody, fromJsonT);
       }
-      return BaseResponse<T>(success: true, data: decodedBody as T?);
+      throw ServerException(
+        'Máy chủ trả dữ liệu không hợp lệ.',
+        statusCode: response.statusCode,
+      );
     }
 
     // Handle standard error codes
@@ -269,19 +209,31 @@ class ApiClient {
         : 'Yêu cầu thất bại (${response.statusCode})';
 
     switch (response.statusCode) {
+      case 401:
+        throw UnauthorizedException('Tên đăng nhập hoặc mật khẩu không đúng.');
+      case 403:
+        throw ForbiddenException();
       case 400:
         throw ValidationException(
           errorMessage.toString(),
-          errors: decodedBody is Map<String, dynamic> ? decodedBody['errors'] : null,
+          errors: decodedBody is Map<String, dynamic>
+              ? decodedBody['errors']
+              : null,
         );
       case 404:
         throw NotFoundException(errorMessage.toString());
       case 409:
-        throw ServerException(errorMessage.toString(), statusCode: 409);
+        throw ServerException(
+          errorMessage.toString(),
+          statusCode: 409,
+          data: decodedBody,
+        );
       case 500:
       default:
         throw ServerException(
-          errorMessage.toString(),
+          response.statusCode >= 500
+              ? 'Máy chủ đang gặp lỗi (${response.statusCode}). Vui lòng thử lại sau.'
+              : errorMessage.toString(),
           statusCode: response.statusCode,
           data: decodedBody,
         );

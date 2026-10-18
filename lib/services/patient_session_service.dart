@@ -1,37 +1,46 @@
+/// Patient identity is bound only after /auth/me has been validated.
 class PatientSessionService {
-  static const String defaultDemoPhone = String.fromEnvironment(
-    'PATIENT_PHONE',
-    defaultValue: '0938668899',
-  );
-
-  String _currentPhone = defaultDemoPhone;
-  String? _patientId;
-  String? _activeEncounterId;
-
-  // Singleton instance
-  static final PatientSessionService _instance = PatientSessionService._internal();
+  static final PatientSessionService _instance =
+      PatientSessionService._internal();
   factory PatientSessionService() => _instance;
   PatientSessionService._internal();
-
+  String _currentPhone = '', _userName = '';
+  String? _patientId, _activeEncounterId;
+  int _version = 0;
+  bool _isDemo = false;
+  bool get isDemo => _isDemo;
   String get currentPhone => _currentPhone;
+  String get userName => _userName;
   String? get patientId => _patientId;
   String? get activeEncounterId => _activeEncounterId;
+  int get version => _version;
+  bool get isAuthenticated => _patientId?.isNotEmpty == true;
 
-  void setPhone(String phone) {
-    _currentPhone = phone.trim();
+  void bindPatient({
+    required String patientId,
+    required String userName,
+    bool isDemo = false,
+  }) {
+    clearSession();
+    _patientId = patientId;
+    _userName = userName;
+    _isDemo = isDemo;
   }
 
+  void setPhone(String phone) => _currentPhone = phone.trim();
   void setPatientId(String? id) {
-    _patientId = id;
+    if (id != _patientId) {
+      throw StateError('Không thể đổi hồ sơ trong phiên Patient.');
+    }
   }
 
-  void setActiveEncounterId(String? encounterId) {
-    _activeEncounterId = encounterId;
-  }
-
+  void setActiveEncounterId(String? id) => _activeEncounterId = id;
   void clearSession() {
+    _version++;
     _currentPhone = '';
+    _userName = '';
     _patientId = null;
     _activeEncounterId = null;
+    _isDemo = false;
   }
 }
