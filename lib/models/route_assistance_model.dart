@@ -57,13 +57,17 @@ class RouteAssistanceRequest {
 class RouteComparisonStep {
   final String serviceName, roomName;
   final int travel, queue, service, result;
+  final int? cumulativeFinish;
   RouteComparisonStep.fromJson(Map<String, dynamic> json)
     : serviceName = json['serviceTypeName'] as String,
       roomName = json['assignedRoomName'] as String,
       travel = _minutes(json['estimatedTravelMinutes']),
       queue = _minutes(json['estimatedQueueWaitMinutes']),
       service = _minutes(json['estimatedDurationMinutes']),
-      result = _minutes(json['estimatedResultWaitMinutes']);
+      result = _minutes(json['estimatedResultWaitMinutes']),
+      cumulativeFinish = json['cumulativeFinishMinutes'] == null
+          ? null
+          : _minutes(json['cumulativeFinishMinutes']);
 }
 
 class ComparisonRoute {
@@ -77,6 +81,17 @@ class ComparisonRoute {
       steps = (json['steps'] as List)
           .map((s) => RouteComparisonStep.fromJson(s as Map<String, dynamic>))
           .toList();
+
+  int? get resultWaitAfterLastService {
+    if (steps.isEmpty) return 0;
+    // Objects kept through hot reload may predate this field. Refresh rather
+    // than guessing a finish time that could omit a mandatory result hold.
+    final finish = steps.last.cumulativeFinish;
+    if (finish == null) return null;
+    // The server's finish time includes any required holds between services.
+    final remaining = total - finish;
+    return remaining > 0 ? remaining : 0;
+  }
 }
 
 class RouteComparison {

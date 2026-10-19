@@ -141,6 +141,47 @@ void main() {
       expect(() => RouteComparison.fromJson(bad), throwsFormatException);
     },
   );
+  test('remaining result wait explains 62 versus 57 minutes with the same service finish', () {
+    final json = comparisonJson();
+    final baseline = json['baseline'] as Map<String, dynamic>;
+    final optimized = json['optimized'] as Map<String, dynamic>;
+    baseline['makespanMinutes'] = 62;
+    optimized['makespanMinutes'] = 57;
+    json['savedMinutes'] = 5;
+    for (final route in [baseline, optimized]) {
+      route['totalTravelMinutes'] = 6;
+      route['totalServiceMinutes'] = 3;
+      (route['steps'] as List).last['cumulativeFinishMinutes'] = 9;
+    }
+    final result = RouteComparison.fromJson(json);
+    expect(result.baseline.resultWaitAfterLastService, 53);
+    expect(result.optimized.resultWaitAfterLastService, 48);
+
+    // A mandatory hold is already included in this finish time. It must not
+    // be counted again as waiting after the final service.
+    (baseline['steps'] as List).last['cumulativeFinishMinutes'] = 29;
+    expect(ComparisonRoute.fromJson(baseline).resultWaitAfterLastService, 33);
+    baseline['makespanMinutes'] = 29;
+    expect(ComparisonRoute.fromJson(baseline).resultWaitAfterLastService, 0);
+    baseline['steps'] = [];
+    expect(ComparisonRoute.fromJson(baseline).resultWaitAfterLastService, 0);
+  });
+  test(
+    'missing finish times require refreshed data instead of inventing a wait',
+    () {
+      final json = comparisonJson();
+      for (final key in ['baseline', 'optimized']) {
+        final route = json[key] as Map<String, dynamic>;
+        for (final step in route['steps'] as List) {
+          (step as Map<String, dynamic>).remove('cumulativeFinishMinutes');
+        }
+      }
+      final result = RouteComparison.fromJson(json);
+      expect(result.baseline.resultWaitAfterLastService, isNull);
+      expect(result.optimized.resultWaitAfterLastService, isNull);
+      expect(result.savedMinutes, 15);
+    },
+  );
   test('Resolved alone is not Applied; proof requires the linked plan and timestamp', () {
     expect(
       RouteAssistanceRequest.fromJson(assistanceJson(status: 'Resolved'))

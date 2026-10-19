@@ -41,7 +41,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (userName != null) {
       setState(() {
         _userName.text = userName;
-        _notice = 'Tạo tài khoản thành công. Đăng nhập để đặt lịch khám.';
+        _notice = 'Tạo tài khoản thành công. Đăng nhập để xem lượt khám hoặc đặt lịch mới.';
       });
     }
   }
@@ -96,7 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Đăng nhập bằng tài khoản đã đăng ký hoặc được bệnh viện cấp.',
+                        'Đăng nhập bằng tài khoản bạn đã tự đăng ký.',
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 28),
@@ -188,7 +188,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 20),
                       const Text(
-                        'Đã có hồ sơ tại bệnh viện hoặc quên mật khẩu? Liên hệ quầy tiếp đón để được hỗ trợ.',
+                        'Đã có mã liên kết trên phiếu khám? Vào Đăng ký, chọn “Đã có mã tại quầy”.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppColors.textSecondary),
                       ),

@@ -85,20 +85,24 @@ class AuthService {
   Future<String> register(PatientRegistration registration) async {
     try {
       final response = await _client.post<Map<String, dynamic>>(
-        '/auth/register',
+        registration.isFromReception
+            ? '/auth/register-from-reception'
+            : '/auth/register',
         requiresAuth: false,
         body: registration.toJson(),
         fromJsonT: (json) => Map<String, dynamic>.from(json as Map),
       );
       final userName = response.data?['userName']?.toString();
       final patientId = response.data?['patientId']?.toString() ?? '';
-      if (userName != registration.phone.trim() ||
+      if ((registration.isFromReception
+              ? PatientRegistration.phoneError(userName) != null
+              : userName != registration.phone.trim()) ||
           !RegExp(r'^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$')
               .hasMatch(patientId) ||
           patientId == '00000000-0000-0000-0000-000000000000') {
         throw ApiException(
           'Chưa xác minh được tài khoản vừa tạo. Hãy thử đăng nhập bằng số '
-          'điện thoại và mật khẩu vừa nhập trước khi đăng ký lại.',
+          'điện thoại của bạn và mật khẩu vừa đặt trước khi đăng ký lại.',
         );
       }
       return userName!;
@@ -110,30 +114,43 @@ class AuthService {
           : <String>{};
       if (codes.contains('PATIENT_LINK_VERIFICATION_REQUIRED')) {
         throw ApiException(
-          'Số điện thoại đã có hồ sơ tại bệnh viện. Liên hệ quầy tiếp đón '
-          'để xác minh và cấp tài khoản cho hồ sơ này.',
+          'Số điện thoại đã có hồ sơ tại bệnh viện. Chọn “Đã có mã tại quầy” '
+          'và nhập mã liên kết trên phiếu khám; nếu chưa có mã, nhờ quầy đối chiếu danh tính và in mã.',
           statusCode: 409,
+        );
+      }
+      if (codes.contains('REGISTRATION_LINK_INVALID')) {
+        throw ApiException(
+          'Mã liên kết không đúng, đã hết hạn hoặc không còn hiệu lực. '
+          'Kiểm tra phiếu hoặc xin mã mới tại quầy.',
+          statusCode: 409,
+        );
+      }
+      if (error.statusCode == 429) {
+        throw ApiException(
+          'Bạn đã thử quá nhiều lần. Chờ một phút rồi thử lại.',
+          statusCode: 429,
         );
       }
       if (error.statusCode == 409) {
         throw ApiException(
-          'Tài khoản hoặc hồ sơ đã tồn tại. Hãy đăng nhập; nếu chưa được '
-          'cấp tài khoản hoặc quên mật khẩu, liên hệ quầy tiếp đón.',
+          'Tài khoản hoặc hồ sơ đã tồn tại. Hãy đăng nhập; nếu cần xác minh '
+          'hồ sơ hoặc hỗ trợ đăng nhập, liên hệ bộ phận hỗ trợ bệnh viện.',
           statusCode: 409,
         );
       }
       throw ApiException(
         'Chưa xác nhận được việc tạo tài khoản. Hãy thử đăng nhập bằng số '
-        'điện thoại và mật khẩu vừa nhập trước khi đăng ký lại.',
+        'điện thoại của bạn và mật khẩu vừa đặt trước khi đăng ký lại.',
       );
     } on NetworkException {
       throw ApiException(
-        'Mất kết nối khi đăng ký. Hãy thử đăng nhập bằng số điện thoại và '
+        'Mất kết nối khi đăng ký. Hãy thử đăng nhập bằng số điện thoại của bạn và '
         'mật khẩu vừa nhập trước khi đăng ký lại.',
       );
     } on TimeoutException {
       throw ApiException(
-        'Đăng ký chưa có phản hồi. Hãy thử đăng nhập bằng số điện thoại và '
+        'Đăng ký chưa có phản hồi. Hãy thử đăng nhập bằng số điện thoại của bạn và '
         'mật khẩu vừa nhập trước khi đăng ký lại.',
       );
     }

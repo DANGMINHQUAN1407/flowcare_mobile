@@ -19,8 +19,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _phone = TextEditingController();
   final _password = TextEditingController();
   final _confirmation = TextEditingController();
+  final _linkCode = TextEditingController();
   DateTime? _dob;
   bool _obscure = true;
+  bool _fromReception = false;
 
   @override
   void dispose() {
@@ -28,6 +30,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _phone.dispose();
     _password.dispose();
     _confirmation.dispose();
+    _linkCode.dispose();
     super.dispose();
   }
 
@@ -36,18 +39,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (auth.isBusy || !_form.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
     final userName = await auth.register(
-      PatientRegistration(
-        fullName: _name.text,
-        phone: _phone.text,
-        password: _password.text,
-        dob: _dob,
-      ),
+      _fromReception
+          ? PatientRegistration.fromReception(
+              registrationLinkCode: _linkCode.text,
+              password: _password.text,
+            )
+          : PatientRegistration(
+              fullName: _name.text,
+              phone: _phone.text,
+              password: _password.text,
+              dob: _dob,
+            ),
     );
     if (mounted && userName != null) {
       _password.clear();
       _confirmation.clear();
+      _linkCode.clear();
       Navigator.of(context).pop(userName);
     }
+  }
+
+  void _changeMode(bool fromReception) {
+    final auth = context.read<AuthProvider>();
+    if (auth.isBusy || fromReception == _fromReception) return;
+    FocusScope.of(context).unfocus();
+    _form.currentState?.reset();
+    _name.clear();
+    _phone.clear();
+    _password.clear();
+    _confirmation.clear();
+    _linkCode.clear();
+    auth.clearMessage();
+    setState(() {
+      _fromReception = fromReception;
+      _dob = null;
+    });
   }
 
   Future<void> _pickDob() async {
@@ -90,59 +116,120 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text(
-                          'Tạo tài khoản để đặt lịch khám',
+                        Text(
+                          _fromReception
+                              ? 'Kích hoạt hồ sơ tại quầy'
+                              : 'Đăng ký tài khoản mới',
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          'Số điện thoại sẽ là tên đăng nhập của bạn.',
+                        Text(
+                          _fromReception
+                              ? 'Dùng thông tin đã lưu tại quầy. Chỉ cần mã liên kết và mật khẩu bạn tự đặt. SĐT tại quầy sẽ là tên đăng nhập.'
+                              : 'Nhập thông tin để tạo tài khoản và đặt lịch khám online. Số điện thoại sẽ là tên đăng nhập.',
                           style: TextStyle(color: AppColors.textSecondary),
                         ),
                         const SizedBox(height: 24),
-                        TextFormField(
-                          key: const Key('register-name'),
-                          controller: _name,
-                          enabled: !auth.isBusy,
-                          textCapitalization: TextCapitalization.words,
-                          autofillHints: const [AutofillHints.name],
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'Họ và tên',
-                          ),
-                          validator: PatientRegistration.nameError,
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ChoiceChip(
+                              label: const Text('Đăng ký mới'),
+                              selected: !_fromReception,
+                              selectedColor: AppColors.primary,
+                              checkmarkColor: AppColors.onPrimary,
+                              labelStyle: TextStyle(
+                                color: !_fromReception
+                                    ? AppColors.onPrimary
+                                    : AppColors.primary,
+                              ),
+                              onSelected: auth.isBusy
+                                  ? null
+                                  : (_) => _changeMode(false),
+                            ),
+                            ChoiceChip(
+                              label: const Text('Đã có mã tại quầy'),
+                              selected: _fromReception,
+                              selectedColor: AppColors.primary,
+                              checkmarkColor: AppColors.onPrimary,
+                              labelStyle: TextStyle(
+                                color: _fromReception
+                                    ? AppColors.onPrimary
+                                    : AppColors.primary,
+                              ),
+                              onSelected: auth.isBusy
+                                  ? null
+                                  : (_) => _changeMode(true),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          key: const Key('register-phone'),
-                          controller: _phone,
-                          enabled: !auth.isBusy,
-                          keyboardType: TextInputType.phone,
-                          autofillHints: const [AutofillHints.telephoneNumber],
-                          textInputAction: TextInputAction.next,
-                          autocorrect: false,
-                          decoration: const InputDecoration(
-                            labelText: 'Số điện thoại',
+                        const SizedBox(height: 20),
+                        if (!_fromReception) ...[
+                          TextFormField(
+                            key: const Key('register-name'),
+                            controller: _name,
+                            enabled: !auth.isBusy,
+                            textCapitalization: TextCapitalization.words,
+                            autofillHints: const [AutofillHints.name],
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'Họ và tên',
+                            ),
+                            validator: PatientRegistration.nameError,
                           ),
-                          validator: PatientRegistration.phoneError,
-                        ),
-                        const SizedBox(height: 16),
-                        OutlinedButton.icon(
-                          onPressed: auth.isBusy ? null : _pickDob,
-                          icon: const Icon(
-                            Icons.calendar_today_outlined,
-                            size: 20,
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            key: const Key('register-phone'),
+                            controller: _phone,
+                            enabled: !auth.isBusy,
+                            keyboardType: TextInputType.phone,
+                            autofillHints: const [
+                              AutofillHints.telephoneNumber,
+                            ],
+                            textInputAction: TextInputAction.next,
+                            autocorrect: false,
+                            decoration: const InputDecoration(
+                              labelText: 'Số điện thoại',
+                            ),
+                            validator: PatientRegistration.phoneError,
                           ),
-                          label: Text(
-                            _dob == null
-                                ? 'Ngày sinh (không bắt buộc)'
-                                : 'Ngày sinh: ${DateFormat('dd/MM/yyyy').format(_dob!)}',
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: auth.isBusy ? null : _pickDob,
+                            icon: const Icon(
+                              Icons.calendar_today_outlined,
+                              size: 20,
+                            ),
+                            label: Text(
+                              _dob == null
+                                  ? 'Ngày sinh (không bắt buộc)'
+                                  : 'Ngày sinh: ${DateFormat('dd/MM/yyyy').format(_dob!)}',
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_fromReception) ...[
+                          TextFormField(
+                            key: const Key('register-link-code'),
+                            controller: _linkCode,
+                            enabled: !auth.isBusy,
+                            textCapitalization: TextCapitalization.characters,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'Mã liên kết trên phiếu khám',
+                              helperText: 'Mã riêng được quầy giao, không phải STT.\nKhông cần nhập lại họ tên, SĐT hoặc ngày sinh.',
+                              helperMaxLines: 3,
+                            ),
+                            validator: PatientRegistration.linkCodeError,
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         TextFormField(
                           key: const Key('register-password'),
                           controller: _password,
@@ -215,7 +302,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Text('Tạo tài khoản'),
+                                : Text(
+                                    _fromReception
+                                        ? 'Kích hoạt tài khoản'
+                                        : 'Tạo tài khoản',
+                                  ),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -226,9 +317,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           child: const Text('Về đăng nhập'),
                         ),
                         const SizedBox(height: 12),
-                        const Text(
-                          'Đã có hồ sơ tại bệnh viện? Liên hệ quầy tiếp đón '
-                          'để được cấp tài khoản liên kết đúng lịch sử khám.',
+                        Text(
+                          _fromReception
+                              ? 'Tài khoản dùng hồ sơ và lượt khám đã có. Mã dùng một lần, có hạn 24 giờ.'
+                              : 'Nếu đã được tiếp nhận tại bệnh viện và có mã liên kết, chọn “Đã có mã tại quầy” để dùng hồ sơ hiện có.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: AppColors.textSecondary),
                         ),

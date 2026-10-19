@@ -407,6 +407,7 @@ class RouteComparisonView extends StatelessWidget {
             _row('Di chuyển', '${a.travel} phút', '${b.travel} phút'),
             _row('Chờ trước dịch vụ', '${a.queue} phút', '${b.queue} phút'),
             _row('Thực hiện dịch vụ', '${a.service} phút', '${b.service} phút'),
+            _row('Chờ thêm sau dịch vụ cuối', _resultWait(a), _resultWait(b)),
             _row(
               'Hoàn tất, đủ kết quả',
               '${a.total} phút',
@@ -434,6 +435,11 @@ class RouteComparisonView extends StatelessWidget {
         _sequence('Thứ tự tối ưu được đề xuất', b.steps),
       ],
     );
+  }
+
+  String _resultWait(ComparisonRoute route) {
+    final minutes = route.resultWaitAfterLastService;
+    return minutes == null ? 'Cần cập nhật' : '$minutes phút';
   }
 
   TableRow _row(

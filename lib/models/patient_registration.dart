@@ -3,13 +3,32 @@ import '../core/network/api_exceptions.dart';
 class PatientRegistration {
   final String fullName, phone, password;
   final DateTime? dob;
+  final String? registrationLinkCode;
+  final bool isFromReception;
 
   const PatientRegistration({
     required this.fullName,
     required this.phone,
     required this.password,
     this.dob,
-  });
+  }) : registrationLinkCode = null,
+       isFromReception = false;
+
+  const PatientRegistration.fromReception({
+    required this.registrationLinkCode,
+    required this.password,
+  }) : fullName = '',
+       phone = '',
+       dob = null,
+       isFromReception = true;
+
+  static String normalizeLinkCode(String? value) =>
+      (value ?? '').replaceAll(RegExp(r'[-\s]'), '').toUpperCase();
+
+  static String? linkCodeError(String? value) =>
+      RegExp(r'^[0-9A-F]{24}$').hasMatch(normalizeLinkCode(value))
+      ? null
+      : 'Nhập đủ mã liên kết 24 ký tự 0–9, A–F trên phiếu khám.';
 
   static String? nameError(String? value) {
     final length = value?.trim().length ?? 0;
@@ -35,6 +54,15 @@ class PatientRegistration {
   }
 
   Map<String, dynamic> toJson() {
+    if (isFromReception) {
+      final error =
+          linkCodeError(registrationLinkCode) ?? passwordError(password);
+      if (error != null) throw ValidationException(error);
+      return {
+        'registrationLinkCode': normalizeLinkCode(registrationLinkCode),
+        'password': password,
+      };
+    }
     final error =
         nameError(fullName) ?? phoneError(phone) ?? passwordError(password);
     if (error != null) throw ValidationException(error);
