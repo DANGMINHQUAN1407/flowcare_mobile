@@ -35,6 +35,7 @@ Map<String, dynamic> comparisonJson({bool improved = true}) {
         'estimatedQueueWaitMinutes': 0,
         'estimatedDurationMinutes': 2,
         'estimatedResultWaitMinutes': 60,
+        'cumulativeFinishMinutes': 5,
       },
       {
         'serviceTypeName': 'Siêu âm',
@@ -43,6 +44,7 @@ Map<String, dynamic> comparisonJson({bool improved = true}) {
         'estimatedQueueWaitMinutes': 0,
         'estimatedDurationMinutes': 15,
         'estimatedResultWaitMinutes': 0,
+        'cumulativeFinishMinutes': 20,
       },
     ],
   };

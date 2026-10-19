@@ -17,6 +17,7 @@ import 'package:flowcare_mobile/widgets/route_assistance_card.dart';
 import 'fixtures/route_assistance_fixtures.dart';
 
 class FakeAssistance extends RouteAssistanceService {
+  Map<String, dynamic> comparisonData = comparisonJson();
   AssistanceEligibility eligible = AssistanceEligibility.fromJson(
     eligibilityJson(),
   );
@@ -49,7 +50,7 @@ class FakeAssistance extends RouteAssistanceService {
 
   @override
   Future<RouteComparison> compare(String id, String patient) async =>
-      RouteComparison.fromJson(comparisonJson());
+      RouteComparison.fromJson(comparisonData);
 }
 
 void main() {
@@ -193,6 +194,7 @@ void main() {
     );
     expect(find.text('77 phút'), findsOneWidget);
     expect(find.text('62 phút'), findsOneWidget);
+    expect(find.text('Chờ thêm sau dịch vụ cuối'), findsOneWidget);
     const capturePath = String.fromEnvironment('FLOW4_CAPTURE');
     if (capturePath.isNotEmpty) {
       final boundary = tester.renderObject<RenderRepaintBoundary>(
@@ -213,6 +215,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+  testWidgets(
+    'comparison with missing finish times can refresh without a build error',
+    (tester) async {
+      final legacy = comparisonJson();
+      for (final key in ['baseline', 'optimized']) {
+        for (final step in legacy[key]['steps'] as List) {
+          (step as Map<String, dynamic>).remove('cumulativeFinishMinutes');
+        }
+      }
+      final fake = FakeAssistance()..comparisonData = legacy;
+      addTearDown(fake.close);
+      await show(tester, fake);
+      final compare = find.byKey(const ValueKey('compare-route-assistance'));
+      await tester.ensureVisible(compare);
+      await tester.tap(compare);
+      await tester.pumpAndSettle();
+      expect(find.text('Cần cập nhật'), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+
+      fake.comparisonData = comparisonJson();
+      await tester.ensureVisible(compare);
+      await tester.tap(compare);
+      await tester.pumpAndSettle();
+      expect(find.text('Cần cập nhật'), findsNothing);
+      expect(find.text('57 phút'), findsOneWidget);
+      expect(find.text('42 phút'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'Applied refreshes the patient journey, while Resolved alone does not',
     (tester) async {

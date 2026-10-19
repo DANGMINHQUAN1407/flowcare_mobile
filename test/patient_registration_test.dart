@@ -60,7 +60,11 @@ class FakeRegistration extends AuthService {
     writes++;
     submitted = registration;
     if (error != null) throw error!;
-    return pending != null ? await pending!.future : registration.phone.trim();
+    return pending != null
+        ? await pending!.future
+        : registration.isFromReception
+        ? phone
+        : registration.phone.trim();
   }
 }
 
@@ -199,7 +203,7 @@ void main() {
     expect(auth.currentUser!.isDemo, isFalse);
   });
 
-  test('an existing walk-in record directs the patient to verified reception provisioning', () async {
+  test('an existing walk-in record requires verification without offering staff-issued credentials', () async {
     final auth = AuthProvider(
       service: service(
         (request) async => conflict('PATIENT_LINK_VERIFICATION_REQUIRED'),
@@ -208,8 +212,69 @@ void main() {
     addTearDown(auth.dispose);
     expect(await auth.register(registration), isNull);
     expect(auth.message, contains('đã có hồ sơ'));
-    expect(auth.message, contains('quầy tiếp đón'));
+    expect(auth.message, contains('mã liên kết trên phiếu khám'));
+    expect(auth.message, isNot(contains('cấp tài khoản')));
+    expect(auth.message, isNot(contains('quầy tiếp đón')));
     expect(ApiClient.authToken, isNull);
+  });
+
+  test('walk-in registration sends the normalized receipt code in one anonymous POST', () async {
+    var writes = 0;
+    final auth = service((request) async {
+      writes++;
+      expect(request.headers['Authorization'], isNull);
+      final body = jsonDecode(request.body) as Map;
+      expect(body['registrationLinkCode'], 'ABCDEF01023456789ABCDEF0');
+      expect(request.url.path, '/api/v1/auth/register-from-reception');
+      expect(body.containsKey('phone'), isFalse);
+      expect(body.containsKey('fullName'), isFalse);
+      expect(body.containsKey('dob'), isFalse);
+      expect(body['password'], 'password123');
+      return response({'userName': phone, 'patientId': patientId});
+    });
+    expect(
+      await auth.register(
+        const PatientRegistration.fromReception(
+          password: 'password123',
+          registrationLinkCode: 'abcdef01-02345678-9abcdef0',
+        ),
+      ),
+      phone,
+    );
+    expect(writes, 1);
+    expect(ApiClient.authToken, isNull);
+  });
+
+  test('malformed link code never sends a signup POST and invalid proof offers reissue guidance', () async {
+    var writes = 0;
+    final auth = service((request) async {
+      writes++;
+      return conflict('REGISTRATION_LINK_INVALID');
+    });
+    await expectLater(
+      auth.register(
+        const PatientRegistration.fromReception(
+          password: 'password123',
+          registrationLinkCode: '123',
+        ),
+      ),
+      throwsA(isA<ValidationException>()),
+    );
+    expect(writes, 0);
+    final provider = AuthProvider(service: auth);
+    addTearDown(provider.dispose);
+    expect(
+      await provider.register(
+        const PatientRegistration.fromReception(
+          password: 'password123',
+          registrationLinkCode: 'ABCDEF01-02345678-9ABCDEF0',
+        ),
+      ),
+      isNull,
+    );
+    expect(writes, 1);
+    expect(provider.message, contains('xin mã mới tại quầy'));
+    expect(provider.isAuthenticated, isFalse);
   });
 
   for (final code in ['DUPLICATE_USERNAME', 'ACCOUNT_ALREADY_EXISTS']) {
@@ -413,6 +478,134 @@ void main() {
     expect(fake.writes, 0);
     expect(find.text('Mật khẩu nhập lại chưa khớp.'), findsOneWidget);
   });
+
+  testWidgets(
+    'online and reception forms have separate fields and clear secrets when switching',
+    (tester) async {
+      if (captureDirectory.isNotEmpty) {
+        tester.view.physicalSize = const Size(393, 1050);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+      }
+      Future<void> captureMode(String name) async {
+        if (captureDirectory.isEmpty) return;
+        await tester.pumpAndSettle();
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const Key('auth-preview')),
+        );
+        await tester.runAsync(() async {
+          final image = await boundary.toImage(pixelRatio: 2);
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          await File('$captureDirectory/$name.png')
+              .writeAsBytes(bytes!.buffer.asUint8List());
+          image.dispose();
+        });
+      }
+
+      final fake = FakeRegistration();
+      await showLogin(tester, fake);
+      await openRegistration(tester);
+      expect(find.byKey(const Key('register-name')), findsOneWidget);
+      expect(find.byKey(const Key('register-phone')), findsOneWidget);
+      expect(find.text('Ngày sinh (không bắt buộc)'), findsOneWidget);
+      expect(find.byKey(const Key('register-link-code')), findsNothing);
+      await captureMode('ONLINE_REGISTRATION_2026-10-19');
+      await tester.enterText(
+        find.byKey(const Key('register-name')),
+        'Draft name',
+      );
+      await tester.ensureVisible(
+        find.widgetWithText(ChoiceChip, 'Đã có mã tại quầy'),
+      );
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Đã có mã tại quầy'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('register-name')), findsNothing);
+      expect(find.byKey(const Key('register-phone')), findsNothing);
+      expect(find.text('Ngày sinh (không bắt buộc)'), findsNothing);
+      await captureMode('WALKIN_ACTIVATION_2026-10-19');
+      final code = find.byKey(const Key('register-link-code'));
+      await tester.ensureVisible(code);
+      await tester.enterText(code, 'ABCDEF01-02345678-9ABCDEF0');
+      final password = find.byKey(const Key('register-password'));
+      await tester.ensureVisible(password);
+      await tester.enterText(password, 'password123');
+      await tester.ensureVisible(
+        find.widgetWithText(ChoiceChip, 'Đăng ký mới'),
+      );
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Đăng ký mới'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('register-link-code')), findsNothing);
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const Key('register-name')))
+            .controller!
+            .text,
+        isEmpty,
+      );
+      expect(tester.widget<TextFormField>(password).controller!.text, isEmpty);
+      expect(fake.writes, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test('anonymous receipt activation surfaces throttling without retry or a session', () async {
+    var calls = 0;
+    final auth = AuthProvider(
+      service: service((request) async {
+        calls++;
+        return response({}, status: 429);
+      }),
+    );
+    addTearDown(auth.dispose);
+    expect(
+      await auth.register(
+        const PatientRegistration.fromReception(
+          registrationLinkCode: 'ABCDEF01-02345678-9ABCDEF0',
+          password: 'password123',
+        ),
+      ),
+      isNull,
+    );
+    expect(auth.message, contains('Chờ một phút'));
+    expect(calls, 1);
+    expect(auth.isAuthenticated, isFalse);
+  });
+
+  testWidgets(
+    'patient can enter the receipt code and choose their own password',
+    (tester) async {
+      final fake = FakeRegistration();
+      await showLogin(tester, fake);
+      await openRegistration(tester);
+      final code = find.byKey(const Key('register-link-code'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Đã có mã tại quầy'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('register-name')), findsNothing);
+      expect(find.byKey(const Key('register-phone')), findsNothing);
+      expect(find.text('Ngày sinh (không bắt buộc)'), findsNothing);
+      await tester.ensureVisible(code);
+      await tester.enterText(code, 'ABCDEF01-02345678-9ABCDEF0');
+      final password = find.byKey(const Key('register-password'));
+      await tester.ensureVisible(password);
+      await tester.enterText(password, 'password123');
+      final confirmation = find.byKey(const Key('register-confirmation'));
+      await tester.ensureVisible(confirmation);
+      await tester.enterText(confirmation, 'password123');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(fake.writes, 1);
+      expect(
+        fake.submitted!.registrationLinkCode,
+        'ABCDEF01-02345678-9ABCDEF0',
+      );
+      expect(fake.submitted!.password, 'password123');
+      expect(fake.submitted!.isFromReception, isTrue);
+      expect(fake.submitted!.fullName, isEmpty);
+      expect(fake.submitted!.phone, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'registration failure stays on form with entered fields and actionable help',
