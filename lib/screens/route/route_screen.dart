@@ -8,13 +8,13 @@ import '../../providers/home_provider.dart';
 import '../../widgets/patient_notifications_sheet.dart';
 import '../../widgets/journey_timing_card.dart';
 import '../../widgets/journey_next_stop.dart';
-import '../../widgets/route_assistance_card.dart';
-import '../../services/route_assistance_service.dart';
+import '../../widgets/route_optimization_card.dart';
+import '../../services/route_optimization_service.dart';
 import '../../services/patient_session_service.dart';
 
 class RouteScreen extends StatelessWidget {
-  final RouteAssistanceService? assistanceService;
-  const RouteScreen({super.key, this.assistanceService});
+  final RouteOptimizationService? optimizationService;
+  const RouteScreen({super.key, this.optimizationService});
 
   @override
   Widget build(BuildContext context) => Consumer<HomeProvider>(
@@ -82,7 +82,7 @@ class RouteScreen extends StatelessWidget {
                   if (journey.plan?.followsOriginalOrder == true) ...[
                     const SizedBox(height: 12),
                     const Text(
-                      'Lộ trình ban đầu theo thứ tự chỉ định. Bạn có thể nhờ tối ưu; phương án mới cần bác sĩ duyệt trước khi áp dụng.',
+                      'Lộ trình ban đầu theo thứ tự chỉ định. Bấm Tối ưu để hệ thống tính và áp dụng ngay lộ trình mới.',
                       style: TextStyle(
                         fontSize: 12,
                         height: 1.5,
@@ -94,16 +94,16 @@ class RouteScreen extends StatelessWidget {
                       !PatientSessionService().isDemo &&
                       home.patientId != null) ...[
                     const SizedBox(height: 16),
-                    RouteAssistanceCard(
+                    RouteOptimizationCard(
                       key: ValueKey(
-                        'support:${PatientSessionService().version}:${home.encounterSummary!.encounterId}',
+                        'optimize:${PatientSessionService().version}:${home.encounterSummary!.encounterId}',
                       ),
                       encounterId: home.encounterSummary!.encounterId,
                       patientId: home.patientId!,
                       isStale: home.isJourneyStale,
                       refreshToken: home.lastUpdatedAt,
-                      service: assistanceService,
-                      onApplied: () =>
+                      service: optimizationService,
+                      onChanged: () =>
                           home.refreshJourney(includeFinalized: true),
                     ),
                   ],
