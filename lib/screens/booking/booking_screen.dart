@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../../core/utils/hospital_time.dart';
+
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -1823,8 +1826,10 @@ class _BookingScreenState extends State<BookingScreen> {
                 const SizedBox(height: 8),
                 _buildSummaryRow(
                   label: 'Thời gian khám:',
-                  value: DateFormat('HH:mm - dd/MM/yyyy')
-                      .format(result.scheduledTime),
+                  value: hospitalTime(
+                    result.scheduledTime,
+                    pattern: 'HH:mm - dd/MM/yyyy',
+                  ),
                   valueColor: AppColors.secondary,
                 ),
                 const SizedBox(height: 8),

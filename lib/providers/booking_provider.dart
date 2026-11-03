@@ -673,8 +673,6 @@ class BookingProvider extends ChangeNotifier {
         patientId: currentPatient.id,
         serviceTypeId: _selectedService!.id,
         scheduledTime: _selectedSlot!.startTime,
-        status: 1, // Confirmed
-        source: 0, // Online
         followUpOrderId: _followUpOrderId,
         doctorId: _originalDoctorId,
       );
@@ -687,11 +685,24 @@ class BookingProvider extends ChangeNotifier {
       _notify();
       return true;
     } catch (e) {
-      String cleanMsg = e.toString().replaceAll('ApiException: ', '');
-      final statusIdx = cleanMsg.lastIndexOf('(Status:');
-      if (statusIdx != -1) cleanMsg = cleanMsg.substring(0, statusIdx).trim();
-
-      _errorMessage = cleanMsg;
+      if (!_isCurrent) return false;
+      final codes = e is ApiException ? e.codes : <String>{};
+      if (codes.contains('SCHEDULE_FULL') ||
+          codes.contains('SCHEDULE_NOT_ACTIVE') ||
+          codes.contains('SCHEDULE_MISMATCH')) {
+        _selectedSlot = null;
+        await _fetchSlots();
+        if (!_isCurrent) return false;
+      }
+      _errorMessage = codes.contains('SCHEDULE_FULL')
+          ? 'Ca trực đã hết chỗ. Danh sách giờ khám đã được cập nhật; vui lòng chọn lại.'
+          : codes.contains('SCHEDULE_NOT_ACTIVE') ||
+                codes.contains('SCHEDULE_MISMATCH')
+          ? 'Ca trực hoặc giờ khám đã thay đổi. Vui lòng chọn lại khung giờ.'
+          : patientErrorMessage(
+              e,
+              fallback: 'Không xác nhận được đặt lịch. Kiểm tra lịch sử trước khi thử lại.',
+            );
       _isSubmitting = false;
       _notify();
       return false;

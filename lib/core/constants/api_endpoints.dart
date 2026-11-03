@@ -22,7 +22,6 @@ class ApiEndpoints {
   static const String patients = '/patients';
 
   // Encounters & Live Status
-  static const String encounters = '/encounters';
   static String encounterStatus(String id) => '/encounters/$id/status';
   static String activeEncounterByPatient(String patientId) =>
       '/encounters/patient/$patientId/active';

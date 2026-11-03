@@ -232,7 +232,7 @@ void main() {
         apiClient: client((_) async => http.Response('{}', 500)),
       );
       await expectLater(
-        service.updatePatient(id: patientId, fullName: 'Test'),
+        service.updatePatient(fullName: 'Test'),
         throwsA(isA<ServerException>()),
       );
     },

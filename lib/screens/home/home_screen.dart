@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -910,8 +909,10 @@ class HomeScreen extends StatelessWidget {
     final apptCode = appointment.id.length >= 8
         ? appointment.id.substring(0, 8).toUpperCase()
         : appointment.id;
-    final dateStr = DateFormat('HH:mm - dd/MM/yyyy')
-        .format(appointment.scheduledTime);
+    final dateStr = hospitalTime(
+      appointment.scheduledTime,
+      pattern: 'HH:mm - dd/MM/yyyy',
+    );
 
     return Container(
       width: double.infinity,

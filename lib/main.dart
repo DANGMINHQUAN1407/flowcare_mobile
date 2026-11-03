@@ -10,6 +10,7 @@ import 'providers/profile_provider.dart';
 import 'providers/auth_provider.dart';
 import 'services/auth_service.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/change_password_screen.dart';
 import 'screens/main_shell_screen.dart';
 
 void main() {
@@ -71,6 +72,7 @@ class _PatientAuthGateState extends State<PatientAuthGate>
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     if (!auth.isAuthenticated) return const LoginScreen();
+    if (auth.mustChangePassword) return const ChangePasswordScreen();
     // A new account gets fresh providers, forms, caches and realtime connections.
     return MultiProvider(
       key: ValueKey('patient-session-${auth.version}'),

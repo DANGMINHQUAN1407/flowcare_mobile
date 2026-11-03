@@ -27,6 +27,8 @@ class PatientService {
         throw ApiException('Hồ sơ trả về không khớp tài khoản đang đăng nhập.');
       }
       return patient;
+    } on PasswordChangeRequiredException {
+      rethrow;
     } on ForbiddenException {
       throw ForbiddenException(
         'Không xác minh được quyền xem hồ sơ của bạn. Vui lòng đăng nhập lại; nếu vẫn lỗi, liên hệ bệnh viện.',
@@ -39,24 +41,26 @@ class PatientService {
   }
 
   Future<PatientModel> updatePatient({
-    required String id,
-    required String fullName,
-    String? phone,
+    String? fullName,
     String? dob,
     String? gender,
     String? address,
   }) async {
-    if (id != PatientSessionService().patientId) throw ForbiddenException();
+    final session = PatientSessionService();
+    final id = session.patientId;
+    final version = session.version;
+    if (id == null || id.isEmpty) throw UnauthorizedException();
     final response = await _apiClient.put<PatientModel>(
-      '/patients/$id',
+      '/patients/me',
       body: {
-        'fullName': fullName,
+        'fullName': ?fullName,
         'dob': ?dob,
         'gender': ?gender,
         'address': ?address,
       },
       fromJsonT: (json) => PatientModel.fromJson(json as Map<String, dynamic>),
     );
+    if (version != session.version) throw SessionChangedException();
     final patient = response.data;
     if (patient == null || patient.id != id) {
       throw ApiException('Máy chủ chưa xác nhận lưu hồ sơ.');

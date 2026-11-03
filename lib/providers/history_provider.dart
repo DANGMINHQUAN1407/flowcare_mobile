@@ -31,6 +31,8 @@ class HistoryProvider extends ChangeNotifier {
   int _selectedTabIndex = 0; // 0: Lịch hẹn, 1: Bệnh án & Đơn thuốc
   List<AppointmentModel> _appointments = [];
   List<MedicalRecordModel> _medicalRecords = [];
+  String? _cancellingAppointmentId;
+  String? get cancellingAppointmentId => _cancellingAppointmentId;
 
   bool get isLoading => _isLoading;
   bool get isRefreshing => _isRefreshing;
@@ -118,6 +120,59 @@ class HistoryProvider extends ChangeNotifier {
 
   void retry(String? patientId, {String? phone, String? patientName}) {
     loadAppointments(patientId, phone: phone, patientName: patientName);
+  }
+
+  Future<bool> cancelAppointment(String id, {String? reason}) async {
+    if (_cancellingAppointmentId != null) return false;
+    final sessionVersion = PatientSessionService().version;
+    final patientId = PatientSessionService().patientId;
+    if (patientId == null ||
+        !_appointments.any((item) => item.id == id && item.canCancel)) {
+      return false;
+    }
+    _cancellingAppointmentId = id;
+    _errorMessage = null;
+    _notify();
+    try {
+      final saved = await _appointmentService.cancelAppointment(
+        id,
+        reason: reason,
+      );
+      if (_disposed || sessionVersion != PatientSessionService().version) {
+        return false;
+      }
+      // Discard reads started before the committed cancellation.
+      _version++;
+      _isLoading = false;
+      _isRefreshing = false;
+      _appointments = _appointments
+          .map((item) => item.id == id ? saved : item)
+          .toList();
+      return true;
+    } catch (error) {
+      if (_disposed || sessionVersion != PatientSessionService().version) {
+        return false;
+      }
+      final stale =
+          error is ApiException &&
+          (error.codes.contains('APPOINTMENT_NOT_CANCELLABLE') ||
+              error.statusCode == 404);
+      if (stale) await loadAppointments(patientId, isRefresh: true);
+      if (!_disposed && sessionVersion == PatientSessionService().version) {
+        _errorMessage = stale
+            ? 'Lịch đã được tiếp nhận, đã hủy hoặc không còn khả dụng. Danh sách đã được cập nhật.'
+            : patientErrorMessage(
+                error,
+                fallback: 'Không xác nhận được hủy lịch. Tải lại lịch sử trước khi thử lại.',
+              );
+      }
+      return false;
+    } finally {
+      if (!_disposed && sessionVersion == PatientSessionService().version) {
+        _cancellingAppointmentId = null;
+        _notify();
+      }
+    }
   }
 
   void logout() {

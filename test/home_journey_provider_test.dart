@@ -35,9 +35,6 @@ class FakeAppointments extends AppointmentService {
   Future<List<AppointmentModel>> getAppointmentsByPatient(
     String patientId,
   ) async => [];
-  @override
-  Future<AppointmentCheckModel> checkAppointmentByPhone(String phone) async =>
-      const AppointmentCheckModel(hasAppointment: false);
 }
 
 class FakeFollowUps extends FollowUpService {

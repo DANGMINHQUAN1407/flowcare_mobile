@@ -17,6 +17,9 @@ class ProfileProvider extends ChangeNotifier {
   int _version = 0;
   String? _errorMessage;
   PatientModel? _patient;
+  bool _isSaving = false, _identityLocked = false;
+  bool get isSaving => _isSaving;
+  bool get identityLocked => _identityLocked;
   bool get isLoading => _isLoading;
   bool get isRefreshing => _isRefreshing;
   String? get errorMessage => _errorMessage;
@@ -60,6 +63,53 @@ class ProfileProvider extends ChangeNotifier {
   }
 
   void retry() => loadProfile(null);
+
+  Future<bool> saveProfile({
+    String? fullName,
+    String? dob,
+    String? gender,
+    String? address,
+  }) async {
+    if (_isSaving) return false;
+    final sessionVersion = _sessionService.version;
+    _isSaving = true;
+    _errorMessage = null;
+    _notify();
+    try {
+      final saved = await _patientService.updatePatient(
+        fullName: fullName,
+        dob: dob,
+        gender: gender,
+        address: address,
+      );
+      if (_disposed || sessionVersion != _sessionService.version) return false;
+      _version++;
+      _isLoading = false;
+      _isRefreshing = false;
+      _patient = saved;
+      return true;
+    } catch (error) {
+      if (!_disposed && sessionVersion == _sessionService.version) {
+        if (error is ApiException &&
+            error.codes.contains('PATIENT_IDENTITY_LOCKED')) {
+          _identityLocked = true;
+          _errorMessage = 'Họ tên, ngày sinh, giới tính đã được xác nhận tại quầy tiếp đón. Liên hệ quầy để thay đổi. Bạn vẫn có thể sửa địa chỉ.';
+        } else {
+          _errorMessage = patientErrorMessage(
+            error,
+            fallback: 'Không xác nhận được lưu hồ sơ. Vui lòng tải lại trước khi thử lại.',
+          );
+        }
+      }
+      return false;
+    } finally {
+      if (!_disposed && sessionVersion == _sessionService.version) {
+        _isSaving = false;
+        _notify();
+      }
+    }
+  }
+
   void logout() {
     _version++;
     _patient = null;

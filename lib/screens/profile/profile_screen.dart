@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/patient_session_service.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/profile_provider.dart';
+import '../../widgets/patient_profile_editor.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -24,6 +25,25 @@ class ProfileScreen extends StatelessWidget {
           appBar: AppBar(
             title: const Text('Hồ sơ sức khỏe Sản - Phụ khoa'),
             actions: [
+              if (patient != null && !PatientSessionService().isDemo)
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined),
+                  tooltip: 'Cập nhật hồ sơ',
+                  onPressed: () async {
+                    final saved = await showDialog<bool>(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => PatientProfileEditor(
+                        patient: patient,
+                        provider: profileProvider,
+                        identityLocked: homeProvider.visits.isNotEmpty,
+                      ),
+                    );
+                    if (saved == true && context.mounted) {
+                      await homeProvider.loadHomeData(isRefresh: true);
+                    }
+                  },
+                ),
               IconButton(
                 icon: const Icon(Icons.refresh_rounded),
                 tooltip: 'Làm mới hồ sơ',

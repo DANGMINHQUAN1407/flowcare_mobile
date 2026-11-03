@@ -13,6 +13,7 @@ import '../../widgets/empty_state_widget.dart';
 import '../../widgets/error_state_widget.dart';
 import '../../widgets/loading_state_widget.dart';
 import '../../core/utils/hospital_time.dart';
+import '../../widgets/appointment_cancel_button.dart';
 
 class HistoryScreen extends StatelessWidget {
   final void Function(int tabIndex)? onNavigateToTab;
@@ -569,6 +570,7 @@ class HistoryScreen extends StatelessWidget {
               _buildStatusBadge(appointment.status),
             ],
           ),
+          AppointmentCancelButton(appointment: appointment),
           const SizedBox(height: 12),
           Text(
             appointment.serviceTypeName,
@@ -694,8 +696,10 @@ class HistoryScreen extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Text(
-                DateFormat('HH:mm - dd/MM/yyyy')
-                    .format(appointment.scheduledTime),
+                hospitalTime(
+                  appointment.scheduledTime,
+                  pattern: 'HH:mm - dd/MM/yyyy',
+                ),
                 style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.textSecondary,
@@ -1252,6 +1256,11 @@ class HistoryScreen extends StatelessWidget {
         fg = AppColors.success;
         label = 'Đã xác nhận';
         break;
+      case 'used':
+        bg = AppColors.infoLight;
+        fg = AppColors.info;
+        label = 'Đã tiếp nhận';
+        break;
       case 'completed':
         bg = AppColors.successLight;
         fg = AppColors.success;
@@ -1464,8 +1473,10 @@ class HistoryScreen extends StatelessWidget {
                     _buildModalCheckRow(
                       Icons.access_time_rounded,
                       'Giờ hẹn:',
-                      DateFormat('HH:mm - dd/MM/yyyy')
-                          .format(appointment.scheduledTime),
+                      hospitalTime(
+                        appointment.scheduledTime,
+                        pattern: 'HH:mm - dd/MM/yyyy',
+                      ),
                     ),
                   ],
                 ),

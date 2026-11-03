@@ -1,24 +1,13 @@
 import '../core/constants/api_endpoints.dart';
 import '../core/network/api_client.dart';
 import '../models/appointment_model.dart';
+import '../core/network/api_exceptions.dart';
 
 class AppointmentService {
   final ApiClient _apiClient;
 
   AppointmentService({ApiClient? apiClient})
     : _apiClient = apiClient ?? ApiClient();
-
-  /// Checks if the patient identified by phone has an active online appointment
-  Future<AppointmentCheckModel> checkAppointmentByPhone(String phone) async {
-    final response = await _apiClient.get<AppointmentCheckModel>(
-      ApiEndpoints.appointmentCheck,
-      queryParameters: {'phone': phone},
-      fromJsonT: (json) =>
-          AppointmentCheckModel.fromJson(json as Map<String, dynamic>),
-    );
-
-    return response.data ?? const AppointmentCheckModel(hasAppointment: false);
-  }
 
   /// Gets all appointments for a specific patient
   Future<List<AppointmentModel>> getAppointmentsByPatient(
@@ -63,8 +52,6 @@ class AppointmentService {
     required String patientId,
     required String serviceTypeId,
     required DateTime scheduledTime,
-    int status = 1, // Confirmed
-    int source = 0, // Online
     String? followUpOrderId,
     String? doctorId,
     String? doctorScheduleId,
@@ -74,8 +61,6 @@ class AppointmentService {
       'patientId': patientId,
       'serviceTypeId': serviceTypeId,
       'scheduledTime': scheduledTime.toUtc().toIso8601String(),
-      'status': status,
-      'source': source,
     };
 
     if (followUpOrderId != null && followUpOrderId.isNotEmpty) {
@@ -105,6 +90,30 @@ class AppointmentService {
       );
     }
 
+    return response.data!;
+  }
+
+  Future<AppointmentModel> cancelAppointment(
+    String id, {
+    String? reason,
+  }) async {
+    if (id.isEmpty || (reason?.trim().length ?? 0) > 500) {
+      throw ValidationException('Lý do hủy lịch tối đa 500 ký tự.');
+    }
+    final response = await _apiClient.post<AppointmentModel>(
+      '/appointments/${Uri.encodeComponent(id)}/cancel',
+      body: {
+        'reason': reason?.trim().isNotEmpty == true ? reason!.trim() : null,
+      },
+      fromJsonT: (json) =>
+          AppointmentModel.fromJson(json as Map<String, dynamic>),
+    );
+    if (response.data?.id != id ||
+        response.data?.status.toLowerCase() != 'cancelled') {
+      throw ApiException(
+        'Máy chủ chưa xác nhận hủy đúng lịch hẹn. Tải lại danh sách trước khi thử lại.',
+      );
+    }
     return response.data!;
   }
 }
