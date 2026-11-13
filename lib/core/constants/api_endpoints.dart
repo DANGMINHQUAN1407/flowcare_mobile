@@ -14,8 +14,7 @@ class ApiEndpoints {
   static String appointmentByPatient(String patientId) =>
       '/appointments/patient/$patientId';
 
-  // Service Types (Backend Dependency: pending GET /api/v1/service-types)
-  static const String serviceTypes = '/service-types';
+  static const String serviceTypes = '/services';
 
   // Patients
   static const String patientSearch = '/patients/search';
