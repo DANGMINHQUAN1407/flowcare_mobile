@@ -113,6 +113,7 @@ class BookingProvider extends ChangeNotifier {
 
   // Services & Slots
   List<ServiceTypeModel> _services = [];
+  List<ServiceTypeModel> _serviceCatalog = [];
   ServiceTypeModel? _selectedService;
   DateTime _selectedDate = defaultBookingDate; // Default tomorrow
   List<AppointmentSlotModel> _availableSlots = [];
@@ -172,6 +173,7 @@ class BookingProvider extends ChangeNotifier {
   String? get clinicalNotes => _clinicalNotes;
 
   List<ServiceTypeModel> get services => _services;
+  List<ServiceTypeModel> get serviceCatalog => _serviceCatalog;
 
   /// Filter services by selected category
   List<ServiceTypeModel> get filteredServices {
@@ -533,7 +535,12 @@ class BookingProvider extends ChangeNotifier {
       // 2. Fetch live services from BE
       final services = await _serviceTypeService.getServiceTypes();
       if (!_isCurrent) return;
-      _services = services;
+      _serviceCatalog = services;
+      _services = services.where((service) =>
+        service.serviceType == null ||
+        service.serviceType?.toLowerCase() == 'consultation' ||
+        service.serviceType == '4',
+      ).toList();
       _isServiceTypeDependencyMissing = _services.isEmpty;
 
       // Select first matching service by category

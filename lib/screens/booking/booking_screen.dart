@@ -951,6 +951,29 @@ class _BookingScreenState extends State<BookingScreen> {
               ),
             ),
           ],
+          for (final order in pendingOrders.where(
+            (order) => order.id == bookingProvider.followUpOrderId,
+          )) ...[
+            if (order.preExamServiceIds.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Dịch vụ cần làm trước tái khám',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              for (final id in order.preExamServiceIds)
+                Text(
+                  bookingProvider.serviceCatalog
+                          .where((service) => service.id == id)
+                          .firstOrNull
+                          ?.name ??
+                      'Dịch vụ theo phiếu tái khám (chưa tải được tên)',
+                ),
+            ],
+            if (order.notes?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 8),
+              Text('Ghi chú của bác sĩ: ${order.notes}'),
+            ],
+          ],
           if (pendingOrders.length > 1) ...[
             const SizedBox(height: 10),
             const Text(
