@@ -16,6 +16,7 @@ class RouteAssistanceCard extends StatefulWidget {
   final DateTime? refreshToken;
   final Future<void> Function() onApplied;
   final RouteAssistanceService? service;
+  final bool showComparison;
   const RouteAssistanceCard({
     super.key,
     required this.encounterId,
@@ -24,6 +25,7 @@ class RouteAssistanceCard extends StatefulWidget {
     this.isStale = false,
     this.refreshToken,
     this.service,
+    this.showComparison = true,
   });
   @override
   State<RouteAssistanceCard> createState() => _RouteAssistanceCardState();
@@ -235,7 +237,7 @@ class _RouteAssistanceCardState extends State<RouteAssistanceCard> {
               const Padding(
                 padding: EdgeInsets.only(top: 6),
                 child: Text(
-                  'Tiếp tục theo tuyến đã xác nhận trong lúc chờ bác sĩ duyệt.',
+                  'Tiếp tục theo lộ trình hiện tại. Nếu có đề nghị dành cho bạn, hãy xem mục Tối ưu lộ trình.',
                   style: TextStyle(fontSize: 12, height: 1.5),
                 ),
               ),
@@ -320,10 +322,10 @@ class _RouteAssistanceCardState extends State<RouteAssistanceCard> {
                   ? 'Đã gửi yêu cầu'
                   : row?.isApplied == true
                   ? 'Gửi yêu cầu tối ưu mới'
-                  : 'Nhờ tối ưu',
+                  : 'Nhờ tối ưu lộ trình',
             ),
           ),
-          OutlinedButton.icon(
+          if (widget.showComparison) OutlinedButton.icon(
             key: const ValueKey('compare-route-assistance'),
             onPressed:
                 _comparing ||

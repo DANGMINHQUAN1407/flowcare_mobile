@@ -9,6 +9,7 @@ import '../../widgets/patient_notifications_sheet.dart';
 import '../../widgets/journey_timing_card.dart';
 import '../../widgets/journey_next_stop.dart';
 import '../../widgets/route_optimization_card.dart';
+import '../../widgets/route_assistance_card.dart';
 import '../../services/route_optimization_service.dart';
 import '../../services/patient_session_service.dart';
 
@@ -82,7 +83,7 @@ class RouteScreen extends StatelessWidget {
                   if (journey.plan?.followsOriginalOrder == true) ...[
                     const SizedBox(height: 12),
                     const Text(
-                      'Lộ trình ban đầu theo thứ tự chỉ định. Bấm Tối ưu để hệ thống tính và áp dụng ngay lộ trình mới.',
+                      'Lộ trình hiện tại theo thứ tự bác sĩ chỉ định.',
                       style: TextStyle(
                         fontSize: 12,
                         height: 1.5,
@@ -100,11 +101,21 @@ class RouteScreen extends StatelessWidget {
                       ),
                       encounterId: home.encounterSummary!.encounterId,
                       patientId: home.patientId!,
+                      currentPlan: journey.plan,
                       isStale: home.isJourneyStale,
                       refreshToken: home.lastUpdatedAt,
                       service: optimizationService,
                       onChanged: () =>
                           home.refreshJourney(includeFinalized: true),
+                      assistance: RouteAssistanceCard(
+                        showComparison: false,
+                        encounterId: home.encounterSummary!.encounterId,
+                        patientId: home.patientId!,
+                        isStale: home.isJourneyStale,
+                        refreshToken: home.lastUpdatedAt,
+                        onApplied: () =>
+                            home.refreshJourney(includeFinalized: true),
+                      ),
                     ),
                   ],
                   if (journey.timing != null) ...[
