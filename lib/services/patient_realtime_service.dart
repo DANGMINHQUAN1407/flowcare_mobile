@@ -57,7 +57,10 @@ class PatientRealtimeService {
       'ParaclinicalPlanCreated',
       'ParaclinicalStepTransitioned',
       'ParaclinicalResultReady',
+      'ExaminationResultUpdated',
       'ParaclinicalPlanStatusChanged',
+      'RouteOfferAvailable',
+      'RouteOfferUpdated',
       'RoutingRecommendationChanged',
     ]) {
       hub.on(event, (_) {
