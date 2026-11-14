@@ -3,11 +3,19 @@ import 'package:provider/provider.dart';
 
 import '../core/utils/hospital_time.dart';
 import '../providers/home_provider.dart';
+import '../services/patient_session_service.dart';
+import '../services/route_optimization_service.dart';
+import 'route_optimization_card.dart';
 
-void showPatientNotifications(BuildContext context) {
+Future<void> showPatientNotifications(
+  BuildContext context, {
+  RouteOptimizationService? optimizationService,
+}) async {
   final home = context.read<HomeProvider>();
+  final session = PatientSessionService();
+  final version = session.version;
   home.markNoticesRead();
-  showModalBottomSheet<void>(
+  final selected = await showModalBottomSheet<JourneyNotice>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
@@ -56,6 +64,12 @@ void showPatientNotifications(BuildContext context) {
                                   pattern: 'HH:mm:ss',
                                 ),
                               ),
+                              trailing: notice.proposedPlanId != null
+                                  ? const Icon(Icons.chevron_right)
+                                  : null,
+                              onTap: notice.proposedPlanId != null
+                                  ? () => Navigator.pop(context, notice)
+                                  : null,
                             );
                           },
                         ),
@@ -63,6 +77,38 @@ void showPatientNotifications(BuildContext context) {
               ],
             ),
           ),
+        ),
+      ),
+    ),
+  );
+  if (!context.mounted || session.version != version) return;
+  final encounterId = selected?.encounterId;
+  final offerId = selected?.proposedPlanId;
+  final patientId = session.patientId;
+  if (encounterId == null || offerId == null || patientId == null) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.75,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          children: [
+            RouteOptimizationCard(
+              encounterId: encounterId,
+              patientId: patientId,
+              requestedOfferId: offerId,
+              service: optimizationService,
+              onChanged: () async {
+                if (session.version == version &&
+                    home.encounterSummary?.encounterId == encounterId) {
+                  await home.refreshJourney(includeFinalized: true);
+                }
+              },
+            ),
+          ],
         ),
       ),
     ),

@@ -10,8 +10,10 @@ import 'package:flowcare_mobile/screens/route/route_screen.dart';
 import 'package:flowcare_mobile/services/patient_session_service.dart';
 
 import 'fixtures/journey_fixtures.dart';
-import 'home_journey_provider_test.dart' show fakeHome, FakeEncounters;
+import 'home_journey_provider_test.dart'
+    show fakeHome, FakeEncounters, FakeRealtime;
 import 'patient_auth_test.dart' show FakePatientAuth;
+import 'route_optimization_widget_test.dart' show FakeOptimization;
 
 void main() {
   setUp(() {
@@ -133,6 +135,67 @@ void main() {
     expect(find.byType(ListTile), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+
+  for (final replaced in [false, true]) {
+    testWidgets(
+      replaced
+          ? 'an old notification cannot open a replacement offer'
+          : 'tapping the offer notice opens that offer for review',
+      (tester) async {
+        ApiClient.setAuthToken('token');
+        final realtime = FakeRealtime();
+        final optimization = FakeOptimization();
+        addTearDown(optimization.close);
+        const id = 'visit';
+        final home = fakeHome(
+          encounters: FakeEncounters()
+            ..summary = summaryFixture(status: 'InProgress', encounterId: id),
+          realtime: realtime,
+        );
+        addTearDown(home.dispose);
+        await home.loadHomeData();
+        final visit = home.encounterSummary!.encounterId;
+        optimization.encounterId = visit;
+        home.startUpdates();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ChangeNotifierProvider<HomeProvider>.value(
+              value: home,
+              child: RouteScreen(optimizationService: optimization),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        realtime.callback!.call('RouteOfferAvailable', {
+          'encounterId': visit,
+          'id': 'proposal',
+          'offer': {'savedMinutes': 12},
+        });
+        realtime.callback!.call('NotificationReceived', {
+          'encounterId': visit,
+          'type': 'RouteOfferAvailable',
+          'payloadJson': '{"planId":"proposal","savedMinutes":12}',
+        });
+        expect(home.notices.length, 1);
+        if (replaced) optimization.proposalId = 'replacement';
+        await openSheet(tester);
+        await tester.tap(find.text('Có lộ trình nhanh hơn khoảng 12 phút'));
+        await tester.pumpAndSettle();
+        expect(optimization.calls, 0);
+        if (replaced) {
+          expect(find.text('Chấp nhận đề xuất'), findsNothing);
+          expect(
+            find.textContaining('trong thông báo đã hết hiệu lực'),
+            findsOneWidget,
+          );
+        } else {
+          expect(find.text('Dự kiến tiết kiệm 12 phút.'), findsOneWidget);
+          expect(find.text('Chấp nhận đề xuất'), findsOneWidget);
+        }
+        home.stopUpdates();
+      },
+    );
+  }
 
   testWidgets(
     'logout removes the notification sheet with the old patient providers',

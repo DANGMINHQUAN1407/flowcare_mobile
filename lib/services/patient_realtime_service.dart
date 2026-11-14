@@ -4,7 +4,7 @@ import '../core/constants/api_endpoints.dart';
 import '../core/network/api_client.dart';
 import '../core/network/api_exceptions.dart';
 
-typedef PatientEventCallback = void Function(String event);
+typedef PatientEventCallback = void Function(String event, [Object? payload]);
 
 class PatientRealtimeService {
   HubConnection? _connection;
@@ -63,9 +63,9 @@ class PatientRealtimeService {
       'RouteOfferUpdated',
       'RoutingRecommendationChanged',
     ]) {
-      hub.on(event, (_) {
+      hub.on(event, (arguments) {
         if (version == _version && sessionVersion == ApiClient.sessionVersion) {
-          onEvent(event);
+          onEvent(event, arguments?.firstOrNull);
         }
       });
     }

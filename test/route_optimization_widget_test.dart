@@ -15,6 +15,7 @@ class FakeOptimization extends RouteOptimizationService {
   bool proposed = false;
   String? declinedReason;
   String proposalId = 'proposal';
+  String encounterId = 'visit';
   DateTime? expiresAt;
   bool replaceOnAccept = false;
   final complete = Completer<ParaclinicalPlanModel>();
@@ -47,7 +48,7 @@ class FakeOptimization extends RouteOptimizationService {
     if (!proposed)
       'offer': {
         'id': proposalId,
-        'encounterId': 'visit',
+        'encounterId': encounterId,
         'status': 'Proposed',
         'steps': [],
       },
@@ -61,7 +62,13 @@ class FakeOptimization extends RouteOptimizationService {
     calls++;
     if (replaceOnAccept) {
       proposalId = 'replacement';
-      throw ApiException('Đề xuất đã thay đổi', statusCode: 409);
+      throw ApiException(
+        'Lộ trình được đề nghị không còn nhanh hơn đáng kể.',
+        statusCode: 409,
+        data: {
+          'errors': ['OFFER_NOT_WORTH'],
+        },
+      );
     }
     final result = await complete.future;
     proposed = true;
@@ -120,7 +127,14 @@ void main() {
           expect(fake.calls, 1);
           expect(accept, findsNothing);
           expect(find.text('Nhờ tối ưu lộ trình'), findsOneWidget);
-          expect(find.textContaining('xác nhận lại'), findsOneWidget);
+          expect(
+            find.textContaining('không còn nhanh hơn đáng kể'),
+            findsOneWidget,
+          );
+          expect(
+            find.textContaining('tiếp tục theo lộ trình hiện tại'),
+            findsOneWidget,
+          );
         }
       },
     );

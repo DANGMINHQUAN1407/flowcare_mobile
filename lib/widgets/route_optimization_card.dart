@@ -19,6 +19,7 @@ class RouteOptimizationCard extends StatefulWidget {
   final RouteOptimizationService? service;
   final ParaclinicalPlanModel? currentPlan;
   final Widget? assistance;
+  final String? requestedOfferId;
   const RouteOptimizationCard({
     super.key,
     required this.encounterId,
@@ -29,6 +30,7 @@ class RouteOptimizationCard extends StatefulWidget {
     this.service,
     this.currentPlan,
     this.assistance,
+    this.requestedOfferId,
   });
   @override
   State<RouteOptimizationCard> createState() => _RouteOptimizationCardState();
@@ -90,6 +92,10 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
   bool _expired(RouteOptimizationEligibility data) =>
       data.expiresAt?.isAfter(DateTime.now()) == false;
 
+  bool _matchesRequest(RouteOptimizationEligibility? data) =>
+      widget.requestedOfferId == null ||
+      widget.requestedOfferId == data?.proposedPlanId;
+
   void _showEligibility(RouteOptimizationEligibility data) {
     _expiryTimer?.cancel();
     if (_reviewedOfferId != data.proposedPlanId) _reviewedOfferId = null;
@@ -127,7 +133,10 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
         }
         if (_appliedPlan?.id != data.activePlanId) _appliedPlan = null;
         _showEligibility(data);
-        if (review && data.canOptimize && !_expired(data)) {
+        if ((review || widget.requestedOfferId != null) &&
+            _matchesRequest(data) &&
+            data.canOptimize &&
+            !_expired(data)) {
           _reviewedOfferId = data.proposedPlanId;
         }
       });
@@ -204,15 +213,9 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
       }
     } catch (error) {
       if (!_current) return;
-      final codes = error is ApiException ? error.codes : <String>{};
       setState(() {
         _eligibility = null;
-        _notice = codes.contains('OFFER_EXPIRED')
-            ? 'Đề xuất tối ưu đã hết hạn.'
-            : error is ApiException &&
-                  (error.statusCode == 409 || codes.contains('OFFER_STALE'))
-            ? 'Đề xuất cần được kiểm tra lại. Hãy xem phương án mới và xác nhận lại nếu còn đề xuất.'
-            : 'Chưa xác minh được phản hồi. ${patientErrorMessage(error)}';
+        _notice = _responseError(error);
       });
       unawaited(widget.onChanged());
     } finally {
@@ -226,6 +229,23 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
     }
   }
 
+  String _responseError(Object error) {
+    if (error is ApiException) {
+      final codes = error.codes;
+      if (codes.contains('OFFER_EXPIRED')) return 'Đề xuất tối ưu đã hết hạn.';
+      if (codes.contains('ROUTE_LOCKED') ||
+          codes.contains('OFFER_NOT_FEASIBLE') ||
+          codes.contains('OFFER_NOT_WORTH') ||
+          codes.contains('NO_OPEN_OFFER')) {
+        return '${error.message} Bạn tiếp tục theo lộ trình hiện tại.';
+      }
+      if (codes.contains('OFFER_STALE') || error.statusCode == 409) {
+        return '${error.message} Bạn tiếp tục theo lộ trình hiện tại. Hãy xem và xác nhận lại nếu có đề xuất mới.';
+      }
+    }
+    return 'Chưa xác minh được phản hồi. ${patientErrorMessage(error)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_allowed) return const SizedBox.shrink();
@@ -233,6 +253,7 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
     final offer = data?.offer;
     final expired = data != null && _expired(data);
     final validOffer =
+        _matchesRequest(data) &&
         data?.canOptimize == true &&
         data?.proposedPlanId != null &&
         offer?.id == data?.proposedPlanId &&
@@ -258,6 +279,11 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
       'ROUTE_LOCKED' => 'Thứ tự dịch vụ đã được bác sĩ khóa.',
       'TOO_FEW_STEPS' => 'Cần ít nhất hai dịch vụ đủ điều kiện.',
       'NO_ACTIVE_PLAN' => 'Chưa có lộ trình đang thực hiện.',
+      _
+          when widget.requestedOfferId == data?.activePlanId &&
+              widget.requestedOfferId != null =>
+        'Đề xuất trong thông báo đã được áp dụng.',
+      _ when widget.requestedOfferId != null => 'Đề xuất trong thông báo đã hết hiệu lực. Mở tab Lộ trình để xem cập nhật mới nhất.',
       _ => 'Hiện chưa có đề xuất tối ưu.',
     };
     return Card(

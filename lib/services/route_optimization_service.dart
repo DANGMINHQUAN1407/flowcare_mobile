@@ -72,7 +72,11 @@ class RouteOptimizationService {
     final latest = await eligibility(encounterId, patientId);
     if (session != PatientSessionService().version)
       throw SessionChangedException();
-    if (!latest.canOptimize || latest.proposedPlanId != proposedPlanId) {
+    if (!latest.canOptimize ||
+        latest.proposedPlanId != proposedPlanId ||
+        latest.offer?.id != proposedPlanId ||
+        latest.offer?.encounterId != encounterId ||
+        latest.expiresAt?.isAfter(DateTime.now()) == false) {
       throw ApiException(
         'Đề xuất đã thay đổi.',
         data: {
@@ -82,10 +86,13 @@ class RouteOptimizationService {
     }
     final response = await _api.post<RouteOptimizationEligibility>(
       '${_path(encounterId)}/optimize/decline',
-      body: {'reason': reason.trim()},
+      body: {'reason': reason.trim(), 'proposedPlanId': proposedPlanId},
       fromJsonT: (json) =>
           RouteOptimizationEligibility.fromJson(json as Map<String, dynamic>),
     );
+    if (session != PatientSessionService().version) {
+      throw SessionChangedException();
+    }
     _checkPatient(patientId);
     return response.data ??
         (throw ApiException('Chưa xác nhận được phản hồi.'));

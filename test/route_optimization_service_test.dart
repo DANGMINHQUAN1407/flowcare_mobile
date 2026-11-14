@@ -114,4 +114,58 @@ void main() {
       throwsA(isA<ApiException>()),
     );
   });
+
+  test(
+    'decline posts the viewed ID and stops if a replacement is read',
+    () async {
+      final calls = <http.Request>[];
+      var openId = 'proposal';
+      final service = RouteOptimizationService(
+        apiClient: ApiClient(
+          baseUrl: 'http://test/api/v1',
+          client: MockClient((request) async {
+            calls.add(request);
+            return http.Response(
+              jsonEncode({
+                'success': true,
+                'data': {
+                  'canOptimize': request.method == 'GET',
+                  'remainingOrders': 2,
+                  if (request.method == 'GET') ...{
+                    'proposedPlanId': openId,
+                    'offer': {
+                      'id': openId,
+                      'encounterId': 'visit',
+                      'status': 'Proposed',
+                      'steps': [],
+                    },
+                  },
+                },
+              }),
+              200,
+            );
+          }),
+        ),
+      );
+      addTearDown(service.close);
+      await service.decline('visit', 'patient', 'proposal', ' Giữ tuyến ');
+      expect(calls.last.url.path, endsWith('/optimize/decline'));
+      expect(jsonDecode(calls.last.body), {
+        'proposedPlanId': 'proposal',
+        'reason': 'Giữ tuyến',
+      });
+      openId = 'replacement';
+      await expectLater(
+        service.decline('visit', 'patient', 'proposal', ''),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.codes,
+            'codes',
+            contains('OFFER_STALE'),
+          ),
+        ),
+      );
+      expect(calls.where((request) => request.method == 'POST'), hasLength(1));
+    },
+  );
 }
