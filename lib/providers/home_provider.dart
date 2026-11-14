@@ -1,4 +1,5 @@
 import 'dart:async' hide TimeoutException;
+import 'dart:convert';
 
 import '../core/network/api_exceptions.dart';
 
@@ -12,6 +13,7 @@ import '../models/patient_journey_model.dart';
 import '../models/patient_model.dart';
 import '../models/patient_visit_model.dart';
 import '../models/queue_ticket_model.dart';
+import '../models/visit_summary_model.dart';
 import '../services/appointment_service.dart';
 import '../services/encounter_service.dart';
 import '../services/follow_up_service.dart';
@@ -23,9 +25,10 @@ import '../services/queue_service.dart';
 class JourneyNotice {
   final String key;
   final String message;
+  final String? encounterId, proposedPlanId;
   final DateTime createdAt = DateTime.now();
   bool isRead = false;
-  JourneyNotice(this.key, this.message);
+  JourneyNotice(this.key, this.message, {this.encounterId, this.proposedPlanId});
 }
 
 class HomeProvider extends ChangeNotifier {
@@ -111,6 +114,21 @@ class HomeProvider extends ChangeNotifier {
       !_disposed &&
       version == _loadVersion &&
       _sessionService.version == _boundSessionVersion;
+
+  Future<VisitSummaryModel> loadVisitSummary(String encounterId) async {
+    if (!_canViewVisitSummary(encounterId)) throw SessionChangedException();
+    final summary = await _encounterService.getVisitSummary(encounterId);
+    if (!_canViewVisitSummary(encounterId)) throw SessionChangedException();
+    return summary;
+  }
+
+  bool _canViewVisitSummary(String encounterId) =>
+      !_disposed &&
+      _sessionService.version == _boundSessionVersion &&
+      !_sessionService.isDemo &&
+      _sessionService.isAuthenticated &&
+      _encounterSummary?.encounterId == encounterId &&
+      _encounterSummary?.isFinalized == true;
 
   Future<void> loadHomeData({bool isRefresh = false}) async {
     final version = ++_loadVersion;
@@ -384,15 +402,20 @@ class HomeProvider extends ChangeNotifier {
     bool watchingThisVisit() =>
         !_disposed &&
         _updatesEnabled &&
+        _sessionService.version == _boundSessionVersion &&
         currentPhone == phone &&
         _encounterSummary?.encounterId == summary.encounterId;
     unawaited(
       _realtimeService
           .connect(
             encounterId: summary.encounterId,
-            onEvent: (event) {
+            onEvent: (event, [payload]) {
               if (!watchingThisVisit()) return;
-              if (event == 'NotificationReceived') {
+              if (event == 'RouteOfferAvailable' ||
+                  (event == 'NotificationReceived' &&
+                      payload is Map && payload['type'] == 'RouteOfferAvailable')) {
+                _announceRouteOffer(summary.encounterId, event, payload);
+              } else if (event == 'NotificationReceived') {
                 _addNotice(
                   'notification:${DateTime.now().millisecondsSinceEpoch}',
                   'Có thông báo mới từ bệnh viện.',
@@ -454,9 +477,41 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
-  void _addNotice(String key, String message) {
+  void _announceRouteOffer(String encounterId, String event, Object? payload) {
+    if (payload is! Map || payload['encounterId'] != encounterId) return;
+    final direct = event == 'RouteOfferAvailable';
+    Object? details = direct ? payload['offer'] : payload['payloadJson'];
+    if (!direct && details is String) {
+      try {
+        details = jsonDecode(details);
+      } on FormatException {
+        return;
+      }
+    }
+    if (details is! Map) return;
+    final id = direct ? payload['id'] : details['planId'];
+    if (id is! String || id.isEmpty) return;
+    final minutes = details['savedMinutes'];
+    _addNotice(
+      'route-offer:$encounterId:$id',
+      minutes is int && minutes > 0
+          ? 'Có lộ trình nhanh hơn khoảng $minutes phút'
+          : 'Có đề xuất tối ưu lộ trình',
+      encounterId: encounterId,
+      proposedPlanId: id,
+    );
+  }
+
+  void _addNotice(
+    String key,
+    String message, {
+    String? encounterId,
+    String? proposedPlanId,
+  }) {
     if (_notices.any((n) => n.key == key)) return;
-    _notices.insert(0, JourneyNotice(key, message));
+    _notices.insert(0, JourneyNotice(
+      key, message, encounterId: encounterId, proposedPlanId: proposedPlanId,
+    ));
     if (_notices.length > 30) _notices.removeLast();
     _notify();
   }

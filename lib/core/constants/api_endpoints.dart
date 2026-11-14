@@ -26,6 +26,8 @@ class ApiEndpoints {
       '/encounters/patient/$patientId/active';
   static String encounterHistoryByPatient(String patientId) =>
       '/patients/me/encounters';
+  static String myVisitSummary(String encounterId) =>
+      '/patients/me/encounters/${Uri.encodeComponent(encounterId)}/visit-summary';
   static String paraclinicalPlan(String encounterId) =>
       '/encounters/$encounterId/paraclinical-plan';
   static String encounterCheckIn(String id) => '/encounters/$id/checkin';

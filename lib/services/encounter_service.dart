@@ -4,6 +4,7 @@ import '../core/network/api_exceptions.dart';
 import '../models/encounter_summary_model.dart';
 import '../models/paraclinical_plan_model.dart';
 import '../models/patient_visit_model.dart';
+import '../models/visit_summary_model.dart';
 
 class EncounterService {
   final ApiClient _apiClient;
@@ -76,5 +77,18 @@ class EncounterService {
           ParaclinicalPlanModel.fromJson(json as Map<String, dynamic>),
     );
     return response.data;
+  }
+
+  Future<VisitSummaryModel> getVisitSummary(String encounterId) async {
+    final response = await _apiClient.get<VisitSummaryModel>(
+      ApiEndpoints.myVisitSummary(encounterId),
+      fromJsonT: (json) =>
+          VisitSummaryModel.fromJson(json as Map<String, dynamic>),
+    );
+    final summary = response.data;
+    if (summary == null || summary.encounterId != encounterId) {
+      throw ApiException('Tóm tắt trả về không khớp với lượt khám đã chọn.');
+    }
+    return summary;
   }
 }

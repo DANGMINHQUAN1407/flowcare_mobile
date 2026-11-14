@@ -5,9 +5,35 @@ import 'package:flowcare_mobile/providers/home_provider.dart';
 import 'package:flowcare_mobile/screens/route/route_screen.dart';
 import 'package:flowcare_mobile/services/patient_session_service.dart';
 import 'package:flowcare_mobile/models/paraclinical_plan_model.dart';
+import 'package:flowcare_mobile/core/network/api_exceptions.dart';
+import 'package:flowcare_mobile/models/visit_summary_model.dart';
 
 import 'home_journey_provider_test.dart' show fakeHome, FakeEncounters;
 import 'fixtures/journey_fixtures.dart';
+
+class _VisitSummaryEncounters extends FakeEncounters {
+  final requestedIds = <String>[];
+  Object? visitSummaryError;
+
+  @override
+  Future<VisitSummaryModel> getVisitSummary(String encounterId) async {
+    requestedIds.add(encounterId);
+    if (visitSummaryError != null) throw visitSummaryError!;
+    return VisitSummaryModel.fromJson({
+      'encounterId': encounterId,
+      'diagnosis': 'Chẩn đoán đã lưu',
+      'plan': 'Lời dặn đã lưu',
+      'prescriptions': [
+        {
+          'medicationName': 'Thuốc kiểm thử',
+          'quantity': 12,
+          'dosage': 'Liều dùng đã lưu',
+          'instructions': 'Hướng dẫn đã lưu',
+        },
+      ],
+    });
+  }
+}
 
 void main() {
   testWidgets(
@@ -22,7 +48,7 @@ void main() {
         userName: 'patient.test',
       );
       final home = fakeHome(
-        encounters: FakeEncounters()
+        encounters: _VisitSummaryEncounters()
           ..plan = ParaclinicalPlanModel.fromJson(timedPlanJson()),
       );
       addTearDown(home.dispose);
@@ -66,4 +92,46 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('Retries the completed visit summary and shows saved content', (
+    tester,
+  ) async {
+    final session = PatientSessionService()
+      ..bindPatient(patientId: 'patient', userName: 'patient.test');
+    addTearDown(session.clearSession);
+    final encounters = _VisitSummaryEncounters()
+      ..visitSummaryError = ApiException(
+        'Chưa chốt',
+        data: {
+          'errors': ['VISIT_NOT_FINALIZED'],
+        },
+      );
+    final home = fakeHome(encounters: encounters);
+    addTearDown(home.dispose);
+    await home.loadHomeData();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<HomeProvider>.value(
+        value: home,
+        child: const MaterialApp(home: RouteScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Tóm tắt sẽ có sau khi bác sĩ hoàn tất lượt khám.'),
+      findsOneWidget,
+    );
+    expect(encounters.requestedIds, ['patient']);
+    encounters.visitSummaryError = null;
+    await tester.tap(find.text('Thử tải lại tóm tắt'));
+    await tester.pumpAndSettle();
+
+    expect(encounters.requestedIds, ['patient', 'patient']);
+    expect(find.text('Chẩn đoán đã lưu'), findsOneWidget);
+    expect(find.text('Lời dặn đã lưu'), findsOneWidget);
+    expect(find.text('Thuốc kiểm thử'), findsOneWidget);
+    expect(find.text('Số lượng: 12'), findsOneWidget);
+    expect(find.text('Liều dùng: Liều dùng đã lưu'), findsOneWidget);
+    expect(find.text('Hướng dẫn sử dụng: Hướng dẫn đã lưu'), findsOneWidget);
+  });
 }

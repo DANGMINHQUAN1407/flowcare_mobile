@@ -10,6 +10,7 @@ import '../../widgets/journey_timing_card.dart';
 import '../../widgets/journey_next_stop.dart';
 import '../../widgets/route_optimization_card.dart';
 import '../../widgets/route_assistance_card.dart';
+import '../../widgets/visit_summary_card.dart';
 import '../../services/route_optimization_service.dart';
 import '../../services/patient_session_service.dart';
 
@@ -28,7 +29,10 @@ class RouteScreen extends StatelessWidget {
           actions: [
             IconButton(
               tooltip: 'Thông báo lượt khám',
-              onPressed: () => showPatientNotifications(context),
+              onPressed: () => showPatientNotifications(
+                context,
+                optimizationService: optimizationService,
+              ),
               icon: Badge(
                 isLabelVisible: home.unreadNoticeCount > 0,
                 label: Text(home.unreadNoticeCount.toString()),
@@ -80,6 +84,19 @@ class RouteScreen extends StatelessWidget {
                     isStale: home.isJourneyStale,
                     hasSnapshot: home.lastUpdatedAt != null,
                   ),
+                  if (journey.isFinalized &&
+                      !PatientSessionService().isDemo &&
+                      home.patientId != null) ...[
+                    const SizedBox(height: 16),
+                    VisitSummaryCard(
+                      key: ValueKey(
+                        'summary:${PatientSessionService().version}:${journey.summary.encounterId}',
+                      ),
+                      encounterId: journey.summary.encounterId,
+                      refreshToken: home.lastUpdatedAt,
+                      load: home.loadVisitSummary,
+                    ),
+                  ],
                   if (journey.plan?.followsOriginalOrder == true) ...[
                     const SizedBox(height: 12),
                     const Text(
