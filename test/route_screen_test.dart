@@ -5,8 +5,11 @@ import 'package:flowcare_mobile/providers/home_provider.dart';
 import 'package:flowcare_mobile/screens/route/route_screen.dart';
 import 'package:flowcare_mobile/services/patient_session_service.dart';
 import 'package:flowcare_mobile/models/paraclinical_plan_model.dart';
+import 'package:flowcare_mobile/core/network/api_client.dart';
 import 'package:flowcare_mobile/core/network/api_exceptions.dart';
 import 'package:flowcare_mobile/models/visit_summary_model.dart';
+import 'package:flowcare_mobile/models/route_optimization_model.dart';
+import 'package:flowcare_mobile/services/route_optimization_service.dart';
 
 import 'home_journey_provider_test.dart' show fakeHome, FakeEncounters;
 import 'fixtures/journey_fixtures.dart';
@@ -35,7 +38,94 @@ class _VisitSummaryEncounters extends FakeEncounters {
   }
 }
 
+class _NoFasterRoute extends RouteOptimizationService {
+  int requests = 0;
+
+  @override
+  Future<RouteOptimizationEligibility> eligibility(
+    String encounterId,
+    String patientId,
+  ) async => RouteOptimizationEligibility.fromJson({
+    'canOptimize': false,
+    'reason': 'NO_BETTER_ROUTE',
+    'remainingOrders': 2,
+    'activePlanId': 'plan-1',
+  });
+
+  @override
+  Future<RouteOptimizationEligibility> requestOptimization(
+    String encounterId,
+    String patientId,
+  ) {
+    requests++;
+    return eligibility(encounterId, patientId);
+  }
+}
+
 void main() {
+  testWidgets(
+    'Two pending orders can request optimization before any offer exists',
+    (tester) async {
+      final session = PatientSessionService()
+        ..bindPatient(patientId: 'patient', userName: 'patient.test');
+      ApiClient.setAuthToken('test-token');
+      addTearDown(session.clearSession);
+      addTearDown(() => ApiClient.setAuthToken(null));
+      final optimization = _NoFasterRoute();
+      addTearDown(optimization.close);
+      final plan = activeTimedPlanJson()..['encounterId'] = 'patient';
+      final steps = (plan['steps'] as List).cast<Map<String, dynamic>>();
+      steps[0]['medicalOrderId'] = 'order-xray';
+      steps[1]['medicalOrderId'] = 'order-lab';
+      final home = fakeHome(
+        encounters: FakeEncounters()
+          ..summary = summaryFixture(status: 'InQueue', queueStatus: 'Done')
+          ..plan = ParaclinicalPlanModel.fromJson(plan),
+      );
+      addTearDown(home.dispose);
+      await home.loadHomeData();
+      await tester.pumpWidget(
+        ChangeNotifierProvider<HomeProvider>.value(
+          value: home,
+          child: MaterialApp(
+            home: RouteScreen(optimizationService: optimization),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final notice = find.text(
+        'Đã tính lại theo hàng đợi hiện tại. Chưa có phương án đáp ứng ràng buộc của bác sĩ và mức tiết kiệm yêu cầu. Bạn tiếp tục theo lộ trình hiện tại.',
+      );
+      final optimize = find.text('Tối ưu lộ trình');
+      await tester.scrollUntilVisible(optimize.hitTestable(), 120);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.ancestor(of: optimize, matching: find.byType(FilledButton)),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      expect(notice, findsNothing);
+      expect(
+        find.text(
+          'Bấm Tối ưu lộ trình để kiểm tra phương án theo hàng đợi hiện tại.',
+        ),
+        findsOneWidget,
+      );
+      expect(optimization.requests, 0);
+      await tester.tap(optimize);
+      await tester.pumpAndSettle();
+      expect(optimization.requests, 1);
+      await tester.scrollUntilVisible(notice, 120);
+      expect(notice, findsOneWidget);
+      expect(find.text('Hỗ trợ tối ưu lộ trình'), findsNothing);
+      expect(find.text('Chấp nhận đề xuất'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'Finalized visit shows real services without stale queue or invented room on a small screen',
     (tester) async {

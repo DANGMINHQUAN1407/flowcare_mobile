@@ -36,6 +36,25 @@ class RouteOptimizationService {
         (throw ApiException('Chưa tải được điều kiện tối ưu.'));
   }
 
+  Future<RouteOptimizationEligibility> requestOptimization(
+    String encounterId,
+    String patientId,
+  ) async {
+    _checkPatient(patientId);
+    final session = PatientSessionService().version;
+    final response = await _api.post<RouteOptimizationEligibility>(
+      '${_path(encounterId)}/optimize/request',
+      fromJsonT: (json) =>
+          RouteOptimizationEligibility.fromJson(json as Map<String, dynamic>),
+    );
+    if (session != PatientSessionService().version) {
+      throw SessionChangedException();
+    }
+    _checkPatient(patientId);
+    return response.data ??
+        (throw ApiException('Chưa tải được phương án tối ưu.'));
+  }
+
   Future<ParaclinicalPlanModel> accept(
     String encounterId,
     String patientId,

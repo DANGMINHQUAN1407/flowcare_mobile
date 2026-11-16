@@ -12,10 +12,12 @@ import 'package:flowcare_mobile/widgets/route_optimization_card.dart';
 
 class FakeOptimization extends RouteOptimizationService {
   int calls = 0;
+  int requests = 0;
   bool proposed = false;
   String? declinedReason;
   String proposalId = 'proposal';
   String encounterId = 'visit';
+  String? activePlanId;
   DateTime? expiresAt;
   bool replaceOnAccept = false;
   final complete = Completer<ParaclinicalPlanModel>();
@@ -41,7 +43,7 @@ class FakeOptimization extends RouteOptimizationService {
   ) async => RouteOptimizationEligibility.fromJson({
     'canOptimize': !proposed,
     'remainingOrders': 2,
-    'activePlanId': proposed ? 'proposal' : null,
+    'activePlanId': proposed ? 'proposal' : activePlanId,
     if (!proposed) 'proposedPlanId': proposalId,
     if (expiresAt != null) 'expiresAt': expiresAt!.toIso8601String(),
     if (!proposed) 'savedMinutes': 12,
@@ -53,6 +55,16 @@ class FakeOptimization extends RouteOptimizationService {
         'steps': [],
       },
   });
+
+  @override
+  Future<RouteOptimizationEligibility> requestOptimization(
+    String id,
+    String patient,
+  ) {
+    requests++;
+    return eligibility(id, patient);
+  }
+
   @override
   Future<ParaclinicalPlanModel> accept(
     String id,
@@ -124,6 +136,8 @@ void main() {
           await tester.pumpAndSettle();
           await tester.tap(accept);
           await tester.pumpAndSettle();
+          await tester.tap(find.text('Xác nhận chấp nhận'));
+          await tester.pumpAndSettle();
           expect(fake.calls, 1);
           expect(accept, findsNothing);
           expect(find.text('Nhờ tối ưu lộ trình'), findsOneWidget);
@@ -170,7 +184,7 @@ void main() {
     expect(find.text('Đã từ chối đề xuất.'), findsOneWidget);
   });
   testWidgets(
-    'one tap applies the optimized route and refreshes without doctor approval',
+    'patient confirms the optimized route and cannot optimize it again',
     (tester) async {
       final fake = FakeOptimization();
       addTearDown(fake.close);
@@ -193,13 +207,25 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('accept-route-offer')), findsNothing);
+      expect(fake.requests, 0);
       await tester.tap(find.text('Nhờ tối ưu lộ trình'));
       await tester.pumpAndSettle();
+      expect(fake.requests, 1);
       expect(find.text('Dự kiến tiết kiệm 12 phút.'), findsOneWidget);
       final button = find.byKey(const ValueKey('accept-route-offer'));
       await tester.tap(button);
-      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Bạn có chấp nhận lộ trình đề xuất không?'),
+        findsOneWidget,
+      );
+      expect(fake.calls, 0);
+      await tester.tap(find.text('Quay lại'));
+      await tester.pumpAndSettle();
+      expect(fake.calls, 0);
       await tester.tap(button);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Xác nhận chấp nhận'));
       await tester.pump();
       expect(fake.calls, 1);
       fake.complete.complete(
@@ -209,6 +235,7 @@ void main() {
           status: 'Active',
           source: 'MedicalOrders',
           mode: 'Optimized',
+          acceptedOfferSavedMinutes: 12,
           nextAfterPlan: '',
           steps: [],
           estimatedTotalMinutes: 42,
@@ -221,9 +248,34 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('Chờ bác sĩ duyệt'), findsNothing);
-      expect(find.textContaining('Lộ trình đã áp dụng'), findsOneWidget);
+      expect(find.text('Lộ trình đã áp dụng'), findsOneWidget);
+      expect(find.text('Nhờ tối ưu lộ trình'), findsNothing);
+      expect(button, findsNothing);
       expect(find.textContaining('Chờ tiếp nhận'), findsNothing);
       expect(tester.takeException(), isNull);
+
+      // Reopen the card while the old backend still reports another offer.
+      fake
+        ..proposed = false
+        ..activePlanId = 'proposal'
+        ..proposalId = 'new-proposal';
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RouteOptimizationCard(
+              encounterId: 'visit',
+              patientId: 'patient',
+              service: fake,
+              currentPlan: await fake.complete.future,
+              onChanged: () async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Nhờ tối ưu lộ trình'), findsNothing);
+      expect(find.text('Chấp nhận đề xuất'), findsNothing);
     },
   );
 }

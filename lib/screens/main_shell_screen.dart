@@ -94,7 +94,7 @@ class _MainShellScreenState extends State<MainShellScreen>
     final List<Widget> screens = [
       HomeScreen(onNavigateToTab: _onTabSelected),
       BookingScreen(onNavigateToTab: _onTabSelected),
-      const RouteScreen(),
+      RouteScreen(isVisible: _currentIndex == 2),
       HistoryScreen(onNavigateToTab: _onTabSelected),
       const ProfileScreen(),
     ];

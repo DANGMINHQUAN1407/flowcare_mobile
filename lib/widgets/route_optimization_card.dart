@@ -10,27 +10,30 @@ import '../models/route_optimization_model.dart';
 
 import '../services/patient_session_service.dart';
 import '../services/route_optimization_service.dart';
+import 'journey_timing_card.dart';
 
 class RouteOptimizationCard extends StatefulWidget {
   final String encounterId, patientId;
   final bool isStale;
+  final bool allowOptimization;
   final DateTime? refreshToken;
   final Future<void> Function() onChanged;
   final RouteOptimizationService? service;
   final ParaclinicalPlanModel? currentPlan;
-  final Widget? assistance;
   final String? requestedOfferId;
+  final ValueChanged<String>? onRouteReviewed;
   const RouteOptimizationCard({
     super.key,
     required this.encounterId,
     required this.patientId,
     required this.onChanged,
     this.isStale = false,
+    this.allowOptimization = true,
     this.refreshToken,
     this.service,
     this.currentPlan,
-    this.assistance,
     this.requestedOfferId,
+    this.onRouteReviewed,
   });
   @override
   State<RouteOptimizationCard> createState() => _RouteOptimizationCardState();
@@ -45,6 +48,7 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
   Timer? _expiryTimer;
   String? _error, _notice;
   String? _reviewedOfferId;
+  String? _checkedWithoutOfferPlanId;
   bool _loading = false, _sending = false;
   bool get _allowed =>
       !PatientSessionService().isDemo && ApiClient.authToken != null;
@@ -53,8 +57,19 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
       _session == PatientSessionService().version &&
       _apiVersion == ApiClient.sessionVersion &&
       PatientSessionService().patientId == widget.patientId;
-  bool get _canRespond =>
+  bool get _canLoad =>
       _current && _allowed && !_loading && !_sending && !widget.isStale;
+  bool get _routeLocked =>
+      widget.currentPlan?.isLocked == true ||
+      _eligibility?.reason == 'ROUTE_LOCKED';
+  bool get _routeAccepted =>
+      _appliedPlan?.acceptedOfferSavedMinutes != null ||
+      widget.currentPlan?.acceptedOfferSavedMinutes != null ||
+      (_eligibility?.reason == 'ROUTE_ALREADY_ACCEPTED' &&
+          (widget.currentPlan == null ||
+              _eligibility?.activePlanId == widget.currentPlan?.id));
+  bool get _canRespond =>
+      _canLoad && widget.allowOptimization && !_routeLocked && !_routeAccepted;
 
   @override
   void initState() {
@@ -70,6 +85,9 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
     super.didUpdateWidget(oldWidget);
     final previous = oldWidget.currentPlan;
     final current = widget.currentPlan;
+    if (current?.isLocked == true && previous?.isLocked != true) {
+      _reviewedOfferId = null;
+    }
     if (previous != null && current != null && previous.id != current.id) {
       _previousPlan = previous;
       if (_appliedPlan?.id != current.id) {
@@ -78,8 +96,11 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
       }
     }
     if (oldWidget.refreshToken != widget.refreshToken ||
-        (oldWidget.isStale && !widget.isStale))
+        previous?.id != current?.id ||
+        previous?.isLocked != current?.isLocked ||
+        (oldWidget.isStale && !widget.isStale)) {
       unawaited(_load());
+    }
   }
 
   @override
@@ -110,13 +131,13 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
   }
 
   Future<void> _load({bool review = false}) async {
-    if (!_canRespond) return;
+    if (!_canLoad || (review && !_canRespond)) return;
     setState(() => _loading = true);
     try {
-      final data = await _service.eligibility(
-        widget.encounterId,
-        widget.patientId,
-      );
+      final fetch = review && widget.requestedOfferId == null
+          ? _service.requestOptimization
+          : _service.eligibility;
+      final data = await fetch(widget.encounterId, widget.patientId);
       if (!_current) return;
       setState(() {
         final previous = _eligibility;
@@ -133,6 +154,11 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
         }
         if (_appliedPlan?.id != data.activePlanId) _appliedPlan = null;
         _showEligibility(data);
+        if (data.reason != 'NO_BETTER_ROUTE') {
+          _checkedWithoutOfferPlanId = null;
+        } else if (review) {
+          _checkedWithoutOfferPlanId = data.activePlanId;
+        }
         if ((review || widget.requestedOfferId != null) &&
             _matchesRequest(data) &&
             data.canOptimize &&
@@ -140,11 +166,55 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
           _reviewedOfferId = data.proposedPlanId;
         }
       });
+      final activePlanId = data.activePlanId;
+      if (activePlanId != null &&
+          !data.canOptimize &&
+          (data.reason == 'ROUTE_LOCKED' ||
+              data.reason == 'TOO_FEW_STEPS' ||
+              (review && data.reason == 'NO_BETTER_ROUTE'))) {
+        widget.onRouteReviewed?.call(activePlanId);
+      }
     } catch (error) {
       if (_current) setState(() => _error = patientErrorMessage(error));
     } finally {
       if (_current) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _confirmAccept(RouteOptimizationEligibility offer) async {
+    if (!_canRespond) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Bạn có chấp nhận lộ trình đề xuất không?'),
+        content: const Text(
+          'Sau khi xác nhận, app sẽ áp dụng thứ tự mới và dừng tối ưu cho lộ trình này. Bác sĩ có thể khóa lộ trình trên màn hình của mình.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Quay lại'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Xác nhận chấp nhận'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !_current) return;
+    final latest = _eligibility;
+    if (_expired(offer) ||
+        latest == null ||
+        latest.proposedPlanId != offer.proposedPlanId) {
+      setState(() {
+        _notice = _expired(offer)
+            ? 'Đề xuất tối ưu đã hết hạn.'
+            : 'Đề xuất đã thay đổi. Hãy xem lại trước khi xác nhận.';
+      });
+      return;
+    }
+    await _respond(latest);
   }
 
   Future<void> _decline(RouteOptimizationEligibility offer) async {
@@ -173,8 +243,9 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
         id == null ||
         id != _reviewedOfferId ||
         _expired(offer) ||
-        !identical(_eligibility, offer))
+        !identical(_eligibility, offer)) {
       return;
+    }
     setState(() {
       _sending = true;
       _notice = null;
@@ -196,6 +267,8 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
           _previousPlan = previousPlan;
           _notice = 'Đã áp dụng lộ trình tối ưu.';
         });
+        refresh = false;
+        widget.onRouteReviewed?.call(plan.id);
         unawaited(widget.onChanged());
       } else {
         final data = await _service.decline(
@@ -209,6 +282,8 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
           _showEligibility(data);
           _notice = 'Đã từ chối đề xuất.';
         });
+        final activePlanId = data.activePlanId;
+        if (activePlanId != null) widget.onRouteReviewed?.call(activePlanId);
         refresh = false;
       }
     } catch (error) {
@@ -233,6 +308,7 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
     if (error is ApiException) {
       final codes = error.codes;
       if (codes.contains('OFFER_EXPIRED')) return 'Đề xuất tối ưu đã hết hạn.';
+      if (codes.contains('ROUTE_ALREADY_ACCEPTED')) return error.message;
       if (codes.contains('ROUTE_LOCKED') ||
           codes.contains('OFFER_NOT_FEASIBLE') ||
           codes.contains('OFFER_NOT_WORTH') ||
@@ -253,37 +329,46 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
     final offer = data?.offer;
     final expired = data != null && _expired(data);
     final validOffer =
+        widget.allowOptimization &&
+        !_routeLocked &&
+        !_routeAccepted &&
         _matchesRequest(data) &&
+        (widget.currentPlan == null ||
+            data?.activePlanId == widget.currentPlan?.id) &&
         data?.canOptimize == true &&
         data?.proposedPlanId != null &&
         offer?.id == data?.proposedPlanId &&
         offer?.encounterId == widget.encounterId;
     final reviewing = validOffer && _reviewedOfferId == data?.proposedPlanId;
     final enabled = _canRespond && _error == null && reviewing && !expired;
-    if ((!validOffer || expired) &&
-        !_loading &&
-        !_sending &&
-        _appliedPlan == null &&
-        _error == null &&
-        widget.assistance != null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_notice != null) Text(_notice!),
-          if (expired) const Text('Đề xuất tối ưu đã hết hạn.'),
-          widget.assistance!,
-        ],
-      );
-    }
+    final appliedPlan = _appliedPlan ?? widget.currentPlan;
+    final canRequest =
+        widget.requestedOfferId == null &&
+        widget.onRouteReviewed != null &&
+        widget.currentPlan?.status.toLowerCase() == 'active' &&
+        widget.allowOptimization &&
+        !_routeLocked &&
+        !_routeAccepted &&
+        !(data?.activePlanId == widget.currentPlan?.id &&
+            data?.reason == 'TOO_FEW_STEPS');
+    final showOptimize =
+        (!reviewing || expired) && (canRequest || (validOffer && !expired));
+    final checkedWithoutOffer =
+        data?.reason == 'NO_BETTER_ROUTE' &&
+        _checkedWithoutOfferPlanId != null &&
+        _checkedWithoutOfferPlanId == data?.activePlanId &&
+        _checkedWithoutOfferPlanId == widget.currentPlan?.id;
     final reason = switch (data?.reason) {
-      'ROUTE_LOCKED' => 'Thứ tự dịch vụ đã được bác sĩ khóa.',
-      'TOO_FEW_STEPS' => 'Cần ít nhất hai dịch vụ đủ điều kiện.',
-      'NO_ACTIVE_PLAN' => 'Chưa có lộ trình đang thực hiện.',
       _
           when widget.requestedOfferId == data?.activePlanId &&
               widget.requestedOfferId != null =>
         'Đề xuất trong thông báo đã được áp dụng.',
       _ when widget.requestedOfferId != null => 'Đề xuất trong thông báo đã hết hiệu lực. Mở tab Lộ trình để xem cập nhật mới nhất.',
+      _ when checkedWithoutOffer => 'Đã tính lại theo hàng đợi hiện tại. Chưa có phương án đáp ứng ràng buộc của bác sĩ và mức tiết kiệm yêu cầu. Bạn tiếp tục theo lộ trình hiện tại.',
+      _ when canRequest =>
+        'Bấm Tối ưu lộ trình để kiểm tra phương án theo hàng đợi hiện tại.',
+      'TOO_FEW_STEPS' => 'Cần ít nhất hai y lệnh còn chờ để tính lại lộ trình.',
+      'NO_ACTIVE_PLAN' => 'Chưa có lộ trình đang thực hiện.',
       _ => 'Hiện chưa có đề xuất tối ưu.',
     };
     return Card(
@@ -303,7 +388,7 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
                 ),
                 IconButton(
                   tooltip: 'Cập nhật tối ưu',
-                  onPressed: _canRespond ? _load : null,
+                  onPressed: _canLoad ? _load : null,
                   icon: const Icon(Icons.refresh),
                 ),
               ],
@@ -314,16 +399,40 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
               const Text('Cập nhật lượt khám để xem đề xuất mới nhất.'),
             if (_error != null)
               Text(_error!, style: const TextStyle(color: AppColors.warning)),
-            if (expired) const Text('Đề xuất tối ưu đã hết hạn.'),
+            if (_routeLocked)
+              const Text('Lộ trình đã được bác sĩ khóa.')
+            else if (_routeAccepted)
+              const Text(
+                'Bạn đã chấp nhận lộ trình. Bác sĩ có thể khóa lộ trình này.',
+              )
+            else if (expired)
+              const Text('Đề xuất tối ưu đã hết hạn.'),
+            if ((widget.onRouteReviewed == null ? null : widget.currentPlan)
+                case final plan?) ...[
+              Text(
+                'Thứ tự dịch vụ hiện tại · ${journeyMinutes(plan.estimatedTotalMinutes)}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              for (final step in plan.steps)
+                Text(
+                  '${step.stepOrder}. ${step.serviceTypeName} · ${step.location}',
+                ),
+            ],
             if (!validOffer &&
+                !_routeLocked &&
+                !_routeAccepted &&
+                !expired &&
                 !_loading &&
-                _error == null &&
-                _appliedPlan == null)
-              Text(reason),
-            if (validOffer && !expired && !reviewing)
+                _error == null)
+              Semantics(liveRegion: true, child: Text(reason)),
+            if (showOptimize)
               FilledButton(
                 onPressed: _canRespond ? () => _load(review: true) : null,
-                child: const Text('Nhờ tối ưu lộ trình'),
+                child: Text(
+                  widget.onRouteReviewed == null
+                      ? 'Nhờ tối ưu lộ trình'
+                      : 'Tối ưu lộ trình',
+                ),
               ),
             if (reviewing && !expired && offer != null && data != null) ...[
               if (data.savedMinutes != null)
@@ -340,6 +449,11 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
                 Text(
                   'Có hiệu lực đến ${TimeOfDay.fromDateTime(expires.toLocal()).format(context)}',
                 ),
+              if (offer.steps.isNotEmpty)
+                const Text(
+                  'Thứ tự đề xuất',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               for (final step in offer.steps)
                 Text(
                   '${step.stepOrder}. ${step.serviceTypeName} · ${step.location}',
@@ -347,7 +461,7 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
               const SizedBox(height: 8),
               FilledButton(
                 key: const ValueKey('accept-route-offer'),
-                onPressed: enabled ? () => _respond(data) : null,
+                onPressed: enabled ? () => _confirmAccept(data) : null,
                 child: const Text('Chấp nhận đề xuất'),
               ),
               OutlinedButton(
@@ -355,6 +469,8 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
                 child: const Text('Từ chối đề xuất'),
               ),
             ],
+            if (appliedPlan?.acceptedOfferSavedMinutes case final minutes?)
+              Text('Lộ trình đã áp dụng · Dự kiến tiết kiệm $minutes phút.'),
             if (_appliedPlan case final plan?) ...[
               if (_previousPlan case final previous?
                   when previous.id != plan.id)
@@ -369,14 +485,17 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
                       ),
                   ],
                 ),
-              const Text(
-                'Lộ trình đã áp dụng',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              for (final step in plan.steps)
-                Text(
-                  '${step.stepOrder}. ${step.serviceTypeName} · ${step.location}',
+              if (widget.onRouteReviewed == null ||
+                  widget.currentPlan?.id != plan.id) ...[
+                const Text(
+                  'Lộ trình đã áp dụng',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
+                for (final step in plan.steps)
+                  Text(
+                    '${step.stepOrder}. ${step.serviceTypeName} · ${step.location}',
+                  ),
+              ],
             ],
           ],
         ),

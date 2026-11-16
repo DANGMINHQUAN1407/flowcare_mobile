@@ -96,16 +96,26 @@ Future<void> showPatientNotifications(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           children: [
-            RouteOptimizationCard(
-              encounterId: encounterId,
-              patientId: patientId,
-              requestedOfferId: offerId,
-              service: optimizationService,
-              onChanged: () async {
-                if (session.version == version &&
-                    home.encounterSummary?.encounterId == encounterId) {
-                  await home.refreshJourney(includeFinalized: true);
-                }
+            ListenableBuilder(
+              listenable: home,
+              builder: (context, _) {
+                final isCurrentVisit =
+                    home.encounterSummary?.encounterId == encounterId;
+                return RouteOptimizationCard(
+                  encounterId: encounterId,
+                  patientId: patientId,
+                  requestedOfferId: offerId,
+                  currentPlan: isCurrentVisit ? home.journey?.plan : null,
+                  refreshToken: isCurrentVisit ? home.lastUpdatedAt : null,
+                  isStale: isCurrentVisit && home.isJourneyStale,
+                  service: optimizationService,
+                  onChanged: () async {
+                    if (session.version == version &&
+                        home.encounterSummary?.encounterId == encounterId) {
+                      await home.refreshJourney(includeFinalized: true);
+                    }
+                  },
+                );
               },
             ),
           ],

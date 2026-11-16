@@ -155,7 +155,9 @@ void main() {
         addTearDown(home.dispose);
         await home.loadHomeData();
         final visit = home.encounterSummary!.encounterId;
-        optimization.encounterId = visit;
+        optimization
+          ..encounterId = visit
+          ..activePlanId = home.journey?.plan?.id;
         home.startUpdates();
         await tester.pumpWidget(
           MaterialApp(
