@@ -126,5 +126,21 @@ void main() {
     expect(find.text('2. Thông tin y tế & Nhóm máu'), findsOneWidget);
     expect(find.text('3. Hồ sơ thai sản & Tiền sử sản khoa'), findsOneWidget);
     expect(find.text('4. Hồ sơ sức khỏe phụ khoa'), findsOneWidget);
+
+    final logout = find.text('Đăng xuất tài khoản');
+    final version = find.text('Phiên bản ứng dụng');
+    expect(logout, findsOneWidget);
+    expect(version, findsOneWidget);
+    expect(find.text('Hỗ trợ & Bảo mật y tế'), findsNothing);
+    expect(find.text('Tổng đài cấp cứu & Chăm sóc sản khoa'), findsNothing);
+    expect(find.text('Địa chỉ Bệnh viện Phụ Sản FlowCare'), findsNothing);
+    expect(find.text('Bảo mật hồ sơ bệnh án điện tử (EMR)'), findsNothing);
+
+    await tester.ensureVisible(logout);
+    await tester.tap(logout);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AlertDialog, 'Đăng xuất hồ sơ'), findsOneWidget);
+    await tester.tap(find.text('Hủy'));
+    await tester.pumpAndSettle();
   });
 }
