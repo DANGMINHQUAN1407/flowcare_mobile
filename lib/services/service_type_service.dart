@@ -10,9 +10,12 @@ class ServiceTypeService {
 
   /// Gets the list of medical examination services from backend.
   /// Permission and transport failures propagate to the screen.
-  Future<List<ServiceTypeModel>> getServiceTypes() async {
+  Future<List<ServiceTypeModel>> getServiceTypes({
+    bool includeInactive = false,
+  }) async {
     final response = await _apiClient.get<List<ServiceTypeModel>>(
       ApiEndpoints.serviceTypes,
+      queryParameters: includeInactive ? {'activeOnly': 'false'} : null,
       fromJsonT: (json) {
         if (json is List) {
           return json

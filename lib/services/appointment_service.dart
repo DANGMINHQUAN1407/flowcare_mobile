@@ -38,7 +38,7 @@ class AppointmentService {
   }) async {
     final response = await _apiClient.get<List<AppointmentSlotModel>>(
       ApiEndpoints.appointmentSlots,
-      queryParameters: {'serviceTypeId': serviceTypeId, 'date': date},
+      queryParameters: {'serviceId': serviceTypeId, 'date': date},
       fromJsonT: (json) => (json as List)
           .whereType<Map<String, dynamic>>()
           .map(AppointmentSlotModel.fromJson)
@@ -59,7 +59,7 @@ class AppointmentService {
   }) async {
     final Map<String, dynamic> body = {
       'patientId': patientId,
-      'serviceTypeId': serviceTypeId,
+      'serviceId': serviceTypeId,
       'scheduledTime': scheduledTime.toUtc().toIso8601String(),
     };
 

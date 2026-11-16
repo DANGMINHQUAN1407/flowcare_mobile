@@ -34,6 +34,8 @@ void main() {
     await service((request) async {
       final body = jsonDecode(request.body) as Map;
       expect(request.url.path, '/api/v1/appointments');
+      expect(body['serviceId'], 'service');
+      expect(body.containsKey('serviceTypeId'), isFalse);
       expect(body.containsKey('status'), isFalse);
       expect(body.containsKey('source'), isFalse);
       expect(DateTime.parse(body['scheduledTime']), instant);
@@ -48,6 +50,19 @@ void main() {
       scheduledTime: instant,
     );
   });
+  test(
+    'slot lookup sends the serviceId parameter expected by the hospital API',
+    () async {
+      await service((request) async {
+        expect(request.url.path, '/api/v1/appointments/slots');
+        expect(request.url.queryParameters, {
+          'serviceId': 'service',
+          'date': '2026-11-16',
+        });
+        return response([]);
+      }).getAvailableSlots(serviceTypeId: 'service', date: '2026-11-16');
+    },
+  );
   test('cancellation posts once and accepts only the exact persisted Cancelled appointment', () async {
     var calls = 0;
     final saved = await service((request) async {
