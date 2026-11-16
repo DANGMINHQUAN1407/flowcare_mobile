@@ -33,6 +33,12 @@ class FollowUpOrderModel {
     required this.createdAt,
   });
 
+  bool canBookFor(String patientId, Set<String> completedEncounterIds) =>
+      this.patientId == patientId &&
+      id.trim().isNotEmpty &&
+      !isBooked &&
+      completedEncounterIds.contains(encounterId);
+
   factory FollowUpOrderModel.fromJson(Map<String, dynamic> json) {
     List<String> parsePreExamIds(dynamic val) {
       if (val is List) {

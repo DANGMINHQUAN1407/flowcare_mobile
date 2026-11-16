@@ -56,7 +56,7 @@ class HomeScreen extends StatelessWidget {
                       style: AppTextStyles.titleMedium,
                     ),
                     const SizedBox(height: 12),
-                    _buildQuickActionsGrid(context, patient),
+                    _buildQuickActionsGrid(context, homeProvider),
 
                     const SizedBox(height: 24),
 
@@ -993,7 +993,12 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildQuickActionsGrid(BuildContext context, PatientModel? patient) {
+  Widget _buildQuickActionsGrid(
+    BuildContext context,
+    HomeProvider homeProvider,
+  ) {
+    final patient = homeProvider.patient;
+    final followUp = homeProvider.latestFollowUpOrder;
     return Column(
       children: [
         Row(
@@ -1054,24 +1059,36 @@ class HomeScreen extends StatelessWidget {
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(
-              child: _buildActionCard(
-                title: 'Đặt lịch tái khám',
-                subtitle: 'Theo chỉ định bác sĩ',
-                icon: Icons.sync_rounded,
-                iconColor: const Color(0xFF0077C8),
-                iconBgColor: const Color(0xFFEBF5FF),
-                onTap: () {
-                  final bookingProvider = Provider.of<BookingProvider>(
-                    context,
-                    listen: false,
-                  );
-                  bookingProvider.setIsFollowUp(true);
-                  onNavigateToTab?.call(1);
-                },
+            if (followUp != null) ...[
+              Expanded(
+                child: _buildActionCard(
+                  title: 'Đặt lịch tái khám',
+                  subtitle: 'Theo chỉ định bác sĩ',
+                  icon: Icons.sync_rounded,
+                  iconColor: const Color(0xFF0077C8),
+                  iconBgColor: const Color(0xFFEBF5FF),
+                  onTap: () async {
+                    final accepted = await context
+                        .read<BookingProvider>()
+                        .openFollowUp(followUp.id);
+                    if (!context.mounted) return;
+                    if (accepted) {
+                      onNavigateToTab?.call(1);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Chưa xác nhận được phiếu tái khám còn khả dụng.',
+                          ),
+                        ),
+                      );
+                      homeProvider.loadHomeData(isRefresh: true);
+                    }
+                  },
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
+              const SizedBox(width: 12),
+            ],
             Expanded(
               child: _buildActionCard(
                 title: 'Lịch sử khám & Đơn',

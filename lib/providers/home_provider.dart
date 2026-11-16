@@ -177,7 +177,13 @@ class HomeProvider extends ChangeNotifier {
       final history = lookup[0] as List<PatientVisitModel>?;
       final active = lookup[1] as EncounterSummaryModel?;
       final followUps = lookup[2] as List<FollowUpOrderModel>? ?? [];
-      _latestFollowUpOrder = followUps.isEmpty ? null : followUps.first;
+      final completedEncounters = (history ?? const <PatientVisitModel>[])
+          .where((visit) => visit.isFinalized)
+          .map((visit) => visit.encounterId)
+          .toSet();
+      _latestFollowUpOrder = followUps
+          .where((order) => order.canBookFor(patientId, completedEncounters))
+          .firstOrNull;
       if (!failures.containsKey('Lịch sử lượt khám')) {
         _visits = history ?? [];
       }
