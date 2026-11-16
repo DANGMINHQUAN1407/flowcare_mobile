@@ -30,6 +30,7 @@ class _BookingScreenState extends State<BookingScreen> {
   final TextEditingController _addressCtrl = TextEditingController();
   final TextEditingController _notesCtrl = TextEditingController();
   int _currentStep = 0; // 0: Dịch vụ & Người khám | 1: Ngày & Giờ khám | 2: Xác nhận & Đặt lịch
+  String? _shownFollowUpOrderId;
 
   @override
   void initState() {
@@ -216,6 +217,12 @@ class _BookingScreenState extends State<BookingScreen> {
       body: SafeArea(
         child: Consumer<BookingProvider>(
           builder: (context, bookingProvider, child) {
+            if (_shownFollowUpOrderId != bookingProvider.followUpOrderId) {
+              _shownFollowUpOrderId = bookingProvider.followUpOrderId;
+              // Nếu vừa chọn tái khám → nhảy thẳng step 2 (chọn giờ),
+              // nếu clear về khám mới → quay step 0
+              _currentStep = bookingProvider.isFollowUp ? 1 : 0;
+            }
             if (PatientSessionService().isDemo) {
               return const Center(
                 child: Padding(
@@ -295,9 +302,10 @@ class _BookingScreenState extends State<BookingScreen> {
       key: const ValueKey('step_1_box'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Booking Type Switcher (Khám Mới vs Tái Khám)
-        _buildBookingTypeSelector(bookingProvider),
-        const SizedBox(height: 14),
+        if (bookingProvider.pendingFollowUpOrders.isNotEmpty) ...[
+          _buildBookingTypeSelector(bookingProvider),
+          const SizedBox(height: 14),
+        ],
 
         if (bookingProvider.followUpError != null) ...[
           Text(
@@ -390,6 +398,11 @@ class _BookingScreenState extends State<BookingScreen> {
       key: const ValueKey('step_2_box'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Banner tái khám (chỉ hiện khi isFollowUp)
+        if (bookingProvider.isFollowUp) ...[
+          _buildFollowUpContextCard(bookingProvider),
+          const SizedBox(height: 14),
+        ],
         // Step 1: Chọn ngày khám
         _buildStepHeader(
           stepNumber: '1',
@@ -706,12 +719,12 @@ class _BookingScreenState extends State<BookingScreen> {
           Expanded(
             child: InkWell(
               onTap: () {
-                if (!bookingProvider.isFollowUp) {
-                  if (pendingOrders.isNotEmpty) {
-                    bookingProvider.setupFollowUpFromOrder(pendingOrders.first);
-                  } else {
-                    bookingProvider.setIsFollowUp(true);
-                  }
+                if (!bookingProvider.isFollowUp && pendingOrders.isNotEmpty) {
+                  bookingProvider.setupFollowUpFromOrder(
+                    pendingOrders.first.id,
+                  );
+                  // Nhảy thẳng sang step 2 (chọn giờ) vì ngày đã được pre-select
+                  setState(() => _currentStep = 1);
                 }
               },
               borderRadius: BorderRadius.circular(10),
@@ -997,7 +1010,9 @@ class _BookingScreenState extends State<BookingScreen> {
                   selected: isCurrent,
                   onSelected: (selected) {
                     if (selected) {
-                      bookingProvider.setupFollowUpFromOrder(ord);
+                      bookingProvider.setupFollowUpFromOrder(ord.id);
+                      // Nhảy thẳng sang step 2 (chọn giờ)
+                      setState(() => _currentStep = 1);
                     }
                   },
                 );
@@ -1275,12 +1290,7 @@ class _BookingScreenState extends State<BookingScreen> {
     final isGyn = bookingProvider.selectedCategory == 'gynecology';
 
     final quickSuggestions = isPrenatal
-        ? [
-            'Khám thai định kỳ',
-            'Đau bụng âm ỉ',
-            'Nghén nhiều / Mệt mỏi',
-            'Tái khám theo hẹn',
-          ]
+        ? ['Khám thai định kỳ', 'Đau bụng âm ỉ', 'Nghén nhiều / Mệt mỏi']
         : (isGyn
               ? [
                   'Khám phụ khoa định kỳ',
@@ -1288,7 +1298,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   'Viêm ngứa / Khó chịu',
                   'Tư vấn sức khỏe',
                 ]
-              : ['Khám định kỳ', 'Tư vấn sức khỏe', 'Tái khám']);
+              : ['Khám định kỳ', 'Tư vấn sức khỏe']);
 
     return Container(
       width: double.infinity,
