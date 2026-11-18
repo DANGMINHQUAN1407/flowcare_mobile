@@ -113,11 +113,11 @@ class _BookingScreenState extends State<BookingScreen> {
       ),
       child: Row(
         children: [
-          _buildStepBadge(0, '1', 'Dịch vụ'),
+          Flexible(flex: 3, child: _buildStepBadge(0, '1', 'Dịch vụ')),
           _buildStepConnector(0),
-          _buildStepBadge(1, '2', 'Thời gian'),
+          Flexible(flex: 4, child: _buildStepBadge(1, '2', 'Thời gian')),
           _buildStepConnector(1),
-          _buildStepBadge(2, '3', 'Xác nhận'),
+          Flexible(flex: 4, child: _buildStepBadge(2, '3', 'Xác nhận')),
         ],
       ),
     );
@@ -135,43 +135,47 @@ class _BookingScreenState extends State<BookingScreen> {
         }
       },
       borderRadius: BorderRadius.circular(12),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            width: 26,
-            height: 26,
-            decoration: BoxDecoration(
-              color: isDone
-                  ? AppColors.secondary
-                  : (isActive ? AppColors.primary : AppColors.surfaceVariant),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: isDone
-                ? const Icon(Icons.check, color: Colors.white, size: 15)
-                : Text(
-                    number,
-                    style: TextStyle(
-                      color: isActive ? Colors.white : AppColors.textSecondary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: isDone
+                    ? AppColors.secondary
+                    : (isActive ? AppColors.primary : AppColors.surfaceVariant),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: isDone
+                  ? const Icon(Icons.check, color: Colors.white, size: 15)
+                  : Text(
+                      number,
+                      style: TextStyle(
+                        color: isActive ? Colors.white : AppColors.textSecondary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
-              color: isActive
-                  ? AppColors.primary
-                  : (isDone ? AppColors.textPrimary : AppColors.textSecondary),
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            Text(
+              label,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+                color: isActive
+                    ? AppColors.primary
+                    : (isDone ? AppColors.textPrimary : AppColors.textSecondary),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -181,7 +185,7 @@ class _BookingScreenState extends State<BookingScreen> {
     return Expanded(
       child: Container(
         height: 2,
-        margin: const EdgeInsets.symmetric(horizontal: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 6),
         color: isPassed ? AppColors.secondary : AppColors.border,
       ),
     );
@@ -189,23 +193,31 @@ class _BookingScreenState extends State<BookingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isFollowUpTitle = context.select<BookingProvider, bool>(
+      (provider) =>
+          provider.isFollowUp ||
+          (provider.bookingSuccessResult != null &&
+              provider.lastSubmittedWasFollowUp),
+    );
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Column(
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Đặt lịch khám trực tuyến',
-              style: TextStyle(
+              isFollowUpTitle ? 'Tái khám theo hẹn' : 'Đặt lịch khám trực tuyến',
+              style: const TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
               ),
             ),
             Text(
-              'Bệnh viện Phụ Sản Thông Minh FlowCare',
-              style: TextStyle(
+              isFollowUpTitle
+                  ? 'Xem lại lịch hẹn & lời dặn từ bác sĩ'
+                  : 'Bệnh viện Phụ Sản Thông Minh FlowCare',
+              style: const TextStyle(
                 fontSize: 11,
                 color: AppColors.textSecondary,
                 fontWeight: FontWeight.w500,
@@ -219,9 +231,10 @@ class _BookingScreenState extends State<BookingScreen> {
           builder: (context, bookingProvider, child) {
             if (_shownFollowUpOrderId != bookingProvider.followUpOrderId) {
               _shownFollowUpOrderId = bookingProvider.followUpOrderId;
-              // Nếu vừa chọn tái khám → nhảy thẳng step 2 (chọn giờ),
-              // nếu clear về khám mới → quay step 0
-              _currentStep = bookingProvider.isFollowUp ? 1 : 0;
+              // Khi thoát chế độ tái khám về khám mới → quay lại Step 1
+              if (!bookingProvider.isFollowUp) {
+                _currentStep = 0;
+              }
             }
             if (PatientSessionService().isDemo) {
               return const Center(
@@ -257,7 +270,15 @@ class _BookingScreenState extends State<BookingScreen> {
               return _buildSuccessView(context, bookingProvider);
             }
 
-            // 4. Booking Step Wizard Box View
+            // 4a. Follow-Up Review Mode (xem lại lịch bác sĩ hẹn + lời dặn, không chọn lại từng ngày/giờ)
+            if (bookingProvider.isFollowUp) {
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                child: _buildFollowUpReviewBox(context, bookingProvider),
+              );
+            }
+
+            // 4b. New Booking Step Wizard Box View
             return Column(
               children: [
                 // Top Progress Stepper
@@ -427,32 +448,43 @@ class _BookingScreenState extends State<BookingScreen> {
         Row(
           children: [
             Expanded(
-              flex: 1,
+              flex: 2,
               child: SizedBox(
                 height: 50,
-                child: OutlinedButton.icon(
+                child: OutlinedButton(
                   onPressed: () => setState(() => _currentStep = 0),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textPrimary,
                     side: const BorderSide(color: AppColors.border),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                  label: const Text(
-                    'Quay lại',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.arrow_back_rounded, size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          'Quay lại',
+                          maxLines: 1,
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
-              flex: 2,
+              flex: 4,
               child: SizedBox(
                 height: 50,
-                child: ElevatedButton.icon(
+                child: ElevatedButton(
                   onPressed: () {
                     if (bookingProvider.selectedSlot == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -472,14 +504,28 @@ class _BookingScreenState extends State<BookingScreen> {
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
                     elevation: 2,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-                  label: const Text(
-                    'Tiếp tục: Xem xác nhận',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.arrow_forward_rounded, size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          'Tiếp tục: Xem xác nhận',
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -550,32 +596,43 @@ class _BookingScreenState extends State<BookingScreen> {
         Row(
           children: [
             Expanded(
-              flex: 1,
+              flex: 2,
               child: SizedBox(
                 height: 52,
-                child: OutlinedButton.icon(
+                child: OutlinedButton(
                   onPressed: () => setState(() => _currentStep = 1),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textPrimary,
                     side: const BorderSide(color: AppColors.border),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                  label: const Text(
-                    'Quay lại',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.arrow_back_rounded, size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          'Quay lại',
+                          maxLines: 1,
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
-              flex: 2,
+              flex: 4,
               child: SizedBox(
                 height: 52,
-                child: ElevatedButton.icon(
+                child: ElevatedButton(
                   onPressed:
                       bookingProvider.canSubmit && !bookingProvider.isSubmitting
                       ? () async {
@@ -614,30 +671,41 @@ class _BookingScreenState extends State<BookingScreen> {
                     backgroundColor: const Color(0xFF0077C8),
                     foregroundColor: Colors.white,
                     elevation: 2,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  icon: bookingProvider.isSubmitting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        bookingProvider.isSubmitting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.check_circle_outline_rounded,
+                                size: 20,
+                              ),
+                        const SizedBox(width: 6),
+                        Text(
+                          bookingProvider.isSubmitting
+                              ? 'Đang gửi yêu cầu...'
+                              : 'Xác nhận đặt lịch',
+                          maxLines: 1,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
                           ),
-                        )
-                      : const Icon(
-                          Icons.check_circle_outline_rounded,
-                          size: 20,
                         ),
-                  label: Text(
-                    bookingProvider.isSubmitting
-                        ? 'Đang gửi yêu cầu...'
-                        : 'Xác nhận đặt lịch',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      ],
                     ),
                   ),
                 ),
@@ -672,6 +740,7 @@ class _BookingScreenState extends State<BookingScreen> {
       child: Row(
         children: [
           Expanded(
+            flex: 2,
             child: InkWell(
               onTap: () {
                 if (bookingProvider.isFollowUp) {
@@ -680,111 +749,126 @@ class _BookingScreenState extends State<BookingScreen> {
               },
               borderRadius: BorderRadius.circular(10),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 10,
+                  horizontal: 6,
+                ),
                 decoration: BoxDecoration(
                   color: !bookingProvider.isFollowUp
                       ? AppColors.primary
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.add_circle_outline_rounded,
-                      size: 16,
-                      color: !bookingProvider.isFollowUp
-                          ? Colors.white
-                          : AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Khám mới',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: !bookingProvider.isFollowUp
-                            ? FontWeight.w800
-                            : FontWeight.w600,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.add_circle_outline_rounded,
+                        size: 16,
                         color: !bookingProvider.isFollowUp
                             ? Colors.white
                             : AppColors.textSecondary,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        'Khám mới',
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: !bookingProvider.isFollowUp
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                          color: !bookingProvider.isFollowUp
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
           const SizedBox(width: 4),
           Expanded(
+            flex: 3,
             child: InkWell(
               onTap: () {
                 if (!bookingProvider.isFollowUp && pendingOrders.isNotEmpty) {
                   bookingProvider.setupFollowUpFromOrder(
                     pendingOrders.first.id,
                   );
-                  // Nhảy thẳng sang step 2 (chọn giờ) vì ngày đã được pre-select
-                  setState(() => _currentStep = 1);
                 }
               },
               borderRadius: BorderRadius.circular(10),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 10,
+                  horizontal: 6,
+                ),
                 decoration: BoxDecoration(
                   color: bookingProvider.isFollowUp
                       ? const Color(0xFF0077C8)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.sync_rounded,
-                      size: 16,
-                      color: bookingProvider.isFollowUp
-                          ? Colors.white
-                          : AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Tái khám theo hẹn',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: bookingProvider.isFollowUp
-                            ? FontWeight.w800
-                            : FontWeight.w600,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.sync_rounded,
+                        size: 16,
                         color: bookingProvider.isFollowUp
                             ? Colors.white
                             : AppColors.textSecondary,
                       ),
-                    ),
-                    if (pendingOrders.isNotEmpty) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
+                      const SizedBox(width: 5),
+                      Text(
+                        'Tái khám theo hẹn',
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: bookingProvider.isFollowUp
+                              ? FontWeight.w800
+                              : FontWeight.w600,
                           color: bookingProvider.isFollowUp
                               ? Colors.white
-                              : AppColors.secondary,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '${pendingOrders.length}',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: bookingProvider.isFollowUp
-                                ? const Color(0xFF0077C8)
-                                : Colors.white,
-                          ),
+                              : AppColors.textSecondary,
                         ),
                       ),
+                      if (pendingOrders.isNotEmpty) ...[
+                        const SizedBox(width: 5),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: bookingProvider.isFollowUp
+                                ? Colors.white
+                                : AppColors.secondary,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '${pendingOrders.length}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: bookingProvider.isFollowUp
+                                  ? const Color(0xFF0077C8)
+                                  : Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -794,17 +878,244 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
+  Widget _buildFollowUpReviewBox(
+    BuildContext context,
+    BookingProvider bookingProvider,
+  ) {
+    final activeOrder = bookingProvider.activeFollowUpOrder;
+    final hasTargetTime = activeOrder?.targetTime != null;
+    final isPast = bookingProvider.isFollowUpScheduledTimeInPast;
+
+    return Column(
+      key: const ValueKey('follow_up_review_box'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (bookingProvider.pendingFollowUpOrders.isNotEmpty) ...[
+          _buildBookingTypeSelector(bookingProvider),
+          const SizedBox(height: 14),
+        ],
+        if (bookingProvider.followUpError != null) ...[
+          Text(
+            'Lịch tái khám: ${bookingProvider.followUpError}',
+            style: const TextStyle(color: AppColors.emergency),
+          ),
+          const SizedBox(height: 12),
+        ],
+        _buildFollowUpContextCard(bookingProvider),
+        if (!hasTargetTime && !isPast) ...[
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.amber.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.schedule_rounded,
+                  size: 16,
+                  color: Colors.amber.shade900,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Phiếu chưa ghi giờ cụ thể — hệ thống dự kiến khung giờ 08:30 trong ngày bác sĩ hẹn.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.amber.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (isPast) ...[
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.amber.shade300),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 18,
+                  color: Colors.amber.shade900,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Thời gian bác sĩ hẹn đã qua. Vui lòng chọn ngày và khung giờ khác để tiếp tục tái khám.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.amber.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          _buildStepHeader(
+            stepNumber: '1',
+            title: 'Chọn lại ngày tái khám',
+            subtitle: 'Áp dụng khi lịch bác sĩ hẹn trước đó đã qua',
+          ),
+          const SizedBox(height: 10),
+          _buildDateSelector(context, bookingProvider),
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            stepNumber: '2',
+            title: 'Chọn khung giờ tái khám',
+            subtitle: 'Các khung giờ còn trống được cập nhật từ viện',
+          ),
+          const SizedBox(height: 10),
+          _buildSlotsSection(bookingProvider),
+        ],
+        if (bookingProvider.errorMessage != null) ...[
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.emergencyLight,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.emergency.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: AppColors.emergency,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    bookingProvider.errorMessage!,
+                    style: const TextStyle(
+                      color: AppColors.emergency,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 18),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: bookingProvider.canSubmit && !bookingProvider.isSubmitting
+                ? () async {
+                    final success = await bookingProvider.submitBooking();
+                    if (success && context.mounted) {
+                      final homeProvider = Provider.of<HomeProvider>(
+                        context,
+                        listen: false,
+                      );
+                      final historyProvider = Provider.of<HistoryProvider>(
+                        context,
+                        listen: false,
+                      );
+                      homeProvider.loadHomeData(isRefresh: true);
+                      historyProvider.loadAppointments(
+                        bookingProvider.patient?.id,
+                        isRefresh: true,
+                      );
+                    } else if (!success && context.mounted) {
+                      final errorMsg =
+                          bookingProvider.errorMessage ??
+                          'Không thể xác nhận lịch tái khám. Vui lòng kiểm tra lại!';
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(errorMsg),
+                          backgroundColor: Colors.red.shade700,
+                          behavior: SnackBarBehavior.floating,
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+                    }
+                  }
+                : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0077C8),
+              foregroundColor: Colors.white,
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  bookingProvider.isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.check_circle_outline_rounded,
+                          size: 20,
+                        ),
+                  const SizedBox(width: 8),
+                  Text(
+                    bookingProvider.isSubmitting
+                        ? 'Đang xác nhận...'
+                        : 'Xác nhận lịch tái khám',
+                    maxLines: 1,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
   Widget _buildFollowUpContextCard(BookingProvider bookingProvider) {
     final doctorName =
         bookingProvider.originalDoctorName ?? 'Bác sĩ chuyên khoa theo dõi';
-    final diagnosis =
-        bookingProvider.previousDiagnosis ??
-        'Tái khám định kỳ theo hẹn của Bác sĩ';
     final targetDate = bookingProvider.recommendedFollowUpDate;
+    final targetTime = bookingProvider.recommendedFollowUpTime;
     final dateStr = targetDate != null
         ? DateFormat('dd/MM/yyyy').format(targetDate)
         : null;
+    final scheduleDisplay = dateStr != null
+        ? (targetTime != null && targetTime.isNotEmpty
+              ? '$targetTime · $dateStr'
+              : dateStr)
+        : null;
     final pendingOrders = bookingProvider.pendingFollowUpOrders;
+    final activeOrder = bookingProvider.activeFollowUpOrder;
 
     return Container(
       width: double.infinity,
@@ -846,7 +1157,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'CHẾ ĐỘ TÁI KHÁM / THEO HẸN',
+                      'LỊCH TÁI KHÁM THEO HẸN',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
@@ -855,7 +1166,7 @@ class _BookingScreenState extends State<BookingScreen> {
                       ),
                     ),
                     Text(
-                      'Ưu tiên giữ liên kết hồ sơ y tế & Bác sĩ điều trị',
+                      'Giữ nguyên bác sĩ điều trị & dịch vụ chỉ định trước',
                       style: TextStyle(
                         fontSize: 11,
                         color: AppColors.textSecondary,
@@ -910,29 +1221,32 @@ class _BookingScreenState extends State<BookingScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(
-                Icons.assignment_outlined,
-                size: 16,
-                color: AppColors.textSecondary,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Chẩn đoán trước: $diagnosis',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                    height: 1.3,
+          if (activeOrder != null &&
+              activeOrder.departmentName.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.local_hospital_outlined,
+                  size: 16,
+                  color: Color(0xFF005BAC),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Khoa khám: ${activeOrder.departmentName}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          if (dateStr != null) ...[
+              ],
+            ),
+          ],
+          if (scheduleDisplay != null) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -952,12 +1266,14 @@ class _BookingScreenState extends State<BookingScreen> {
                     color: Color(0xFF005BAC),
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    'Ngày bác sĩ hẹn: $dateStr',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF005BAC),
+                  Flexible(
+                    child: Text(
+                      'Ngày bác sĩ hẹn: $scheduleDisplay',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF005BAC),
+                      ),
                     ),
                   ),
                 ],
@@ -968,24 +1284,102 @@ class _BookingScreenState extends State<BookingScreen> {
             (order) => order.id == bookingProvider.followUpOrderId,
           )) ...[
             if (order.preExamServiceIds.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              const Text(
-                'Dịch vụ cần làm trước tái khám',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              for (final id in order.preExamServiceIds)
-                Text(
-                  bookingProvider.serviceCatalog
-                          .where((service) => service.id == id)
-                          .firstOrNull
-                          ?.name ??
-                      'Dịch vụ theo phiếu tái khám (chưa tải được tên)',
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.secondary.withValues(alpha: 0.25),
+                  ),
                 ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.medical_services_outlined,
+                          size: 15,
+                          color: AppColors.secondary,
+                        ),
+                        const SizedBox(width: 6),
+                        const Expanded(
+                          child: Text(
+                            'Dịch vụ cần làm trước tái khám',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Khi đến tái khám, bạn sẽ được đưa thẳng vào các dịch vụ này trước khi gặp bác sĩ:',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    for (final id in order.preExamServiceIds)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '• ',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.secondary,
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                bookingProvider.serviceCatalog
+                                        .where((service) => service.id == id)
+                                        .firstOrNull
+                                        ?.name ??
+                                    'Dịch vụ theo phiếu tái khám (chưa tải được tên)',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
-            if (order.notes?.trim().isNotEmpty == true) ...[
-              const SizedBox(height: 8),
-              Text('Ghi chú của bác sĩ: ${order.notes}'),
-            ],
+            const SizedBox(height: 12),
+            const Text(
+              'Dặn dò chuẩn bị trước tái khám',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              order.notes?.trim().isNotEmpty == true
+                  ? order.notes!.trim()
+                  : 'Chưa có dặn dò riêng cho lịch này.',
+            ),
+            Material(
+              type: MaterialType.transparency,
+              child: _FollowUpVisitAdvice(
+                key: ValueKey(order.id),
+                preparationNote: order.notes?.trim(),
+                load: () => bookingProvider.loadFollowUpVisitAdvice(order.id),
+              ),
+            ),
           ],
           if (pendingOrders.length > 1) ...[
             const SizedBox(height: 10),
@@ -1003,16 +1397,17 @@ class _BookingScreenState extends State<BookingScreen> {
               runSpacing: 6,
               children: pendingOrders.map((ord) {
                 final isCurrent = bookingProvider.followUpOrderId == ord.id;
+                final timeSuffix = ord.targetTime != null
+                    ? '${ord.targetTime} '
+                    : '';
                 return ChoiceChip(
                   label: Text(
-                    'Phiếu ${DateFormat('dd/MM').format(ord.targetDate)} - ${ord.originalDoctorName}',
+                    'Phiếu $timeSuffix${DateFormat('dd/MM').format(ord.targetDate)} - ${ord.originalDoctorName}',
                   ),
                   selected: isCurrent,
                   onSelected: (selected) {
                     if (selected) {
                       bookingProvider.setupFollowUpFromOrder(ord.id);
-                      // Nhảy thẳng sang step 2 (chọn giờ)
-                      setState(() => _currentStep = 1);
                     }
                   },
                 );
@@ -1774,17 +2169,22 @@ class _BookingScreenState extends State<BookingScreen> {
   }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
           style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: valueColor ?? AppColors.textPrimary,
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: valueColor ?? AppColors.textPrimary,
+            ),
           ),
         ),
       ],
@@ -1796,6 +2196,7 @@ class _BookingScreenState extends State<BookingScreen> {
     BookingProvider bookingProvider,
   ) {
     final result = bookingProvider.bookingSuccessResult!;
+    final isFollowUp = bookingProvider.lastSubmittedWasFollowUp;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
       child: Column(
@@ -1815,14 +2216,18 @@ class _BookingScreenState extends State<BookingScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Đặt lịch khám thành công!',
+          Text(
+            isFollowUp
+                ? 'Xác nhận lịch tái khám thành công!'
+                : 'Đặt lịch khám thành công!',
             style: AppTextStyles.headlineSmall,
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Lịch hẹn của quý khách đã được ghi nhận trên hệ thống tiếp đón Bệnh viện Phụ Sản FlowCare.',
+          Text(
+            isFollowUp
+                ? 'Lịch tái khám theo hẹn của quý khách đã được ghi nhận trên hệ thống FlowCare. Khi đến tái khám, các dịch vụ chỉ định trước sẽ được ưu tiên điều phối.'
+                : 'Lịch hẹn của quý khách đã được ghi nhận trên hệ thống tiếp đón Bệnh viện Phụ Sản FlowCare.',
             style: AppTextStyles.bodySmall,
             textAlign: TextAlign.center,
           ),
@@ -1905,7 +2310,8 @@ class _BookingScreenState extends State<BookingScreen> {
             child: OutlinedButton(
               onPressed: () {
                 bookingProvider.resetBooking();
-                widget.onNavigateToTab?.call(3); // Go to History
+                context.read<HistoryProvider>().setTab(1);
+                widget.onNavigateToTab?.call(3);
               },
               style: OutlinedButton.styleFrom(
                 shape: RoundedRectangleBorder(
@@ -1922,4 +2328,68 @@ class _BookingScreenState extends State<BookingScreen> {
       ),
     );
   }
+}
+
+class _FollowUpVisitAdvice extends StatefulWidget {
+  final Future<String?> Function() load;
+  final String? preparationNote;
+
+  const _FollowUpVisitAdvice({
+    super.key,
+    required this.load,
+    required this.preparationNote,
+  });
+
+  @override
+  State<_FollowUpVisitAdvice> createState() => _FollowUpVisitAdviceState();
+}
+
+class _FollowUpVisitAdviceState extends State<_FollowUpVisitAdvice> {
+  Future<String?>? _advice;
+
+  void _loadAdvice() {
+    final request = widget.load();
+    setState(() {
+      _advice = request;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => ExpansionTile(
+    tilePadding: EdgeInsets.zero,
+    childrenPadding: const EdgeInsets.only(bottom: 8),
+    expandedCrossAxisAlignment: CrossAxisAlignment.start,
+    title: const Text('Lời dặn về chăm sóc và ăn uống'),
+    subtitle: const Text('Từ lượt khám trước'),
+    onExpansionChanged: (expanded) {
+      if (expanded && _advice == null) {
+        _loadAdvice();
+      }
+    },
+    children: [
+      if (_advice case final advice?)
+        FutureBuilder<String?>(
+          future: advice,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const LinearProgressIndicator(
+                semanticsLabel: 'Đang tải lời dặn',
+              );
+            }
+            if (snapshot.hasError) {
+              return TextButton(
+                onPressed: _loadAdvice,
+                child: const Text('Chưa tải được lời dặn. Thử lại'),
+              );
+            }
+            final text = snapshot.data?.trim() ?? '';
+            if (text.isEmpty) return const Text('Chưa có lời dặn đã lưu.');
+            if (text == widget.preparationNote) {
+              return const Text('Xem dặn dò chuẩn bị ở trên.');
+            }
+            return SelectableText(text);
+          },
+        ),
+    ],
+  );
 }

@@ -69,6 +69,8 @@ class BookingProvider extends ChangeNotifier {
   String? _previousDiagnosis;
   String? _followUpAdvice;
   DateTime? _recommendedFollowUpDate;
+  String? _recommendedFollowUpTime;
+  bool _lastSubmittedWasFollowUp = false;
   List<FollowUpOrderModel> _pendingFollowUpOrders = [];
 
   // Patient administrative input state
@@ -138,11 +140,28 @@ class BookingProvider extends ChangeNotifier {
 
   bool get isFollowUp => _followUpOrderId != null;
   String? get followUpOrderId => _followUpOrderId;
+  FollowUpOrderModel? get activeFollowUpOrder => _pendingFollowUpOrders
+      .where((order) => order.id == _followUpOrderId)
+      .firstOrNull;
   String? get originalDoctorId => _originalDoctorId;
   String? get originalDoctorName => _originalDoctorName;
   String? get previousDiagnosis => _previousDiagnosis;
   String? get followUpAdvice => _followUpAdvice;
   DateTime? get recommendedFollowUpDate => _recommendedFollowUpDate;
+  String? get recommendedFollowUpTime =>
+      activeFollowUpOrder?.targetTime ?? _recommendedFollowUpTime;
+  bool get lastSubmittedWasFollowUp => _lastSubmittedWasFollowUp;
+  DateTime? get followUpScheduledTime =>
+      _selectedSlot?.startTime ?? activeFollowUpOrder?.scheduledHospitalUtcTime();
+  bool get isFollowUpScheduledTimeInPast {
+    if (!isFollowUp) return false;
+    if (_selectedSlot != null && _selectedSlot!.isAvailable) return false;
+    final scheduled = activeFollowUpOrder?.scheduledHospitalUtcTime();
+    if (scheduled == null) return false;
+    return scheduled.isBefore(
+      DateTime.now().toUtc().subtract(const Duration(minutes: 4)),
+    );
+  }
   List<FollowUpOrderModel> get pendingFollowUpOrders => _pendingFollowUpOrders;
 
   String get fullName => _fullName;
@@ -226,12 +245,14 @@ class BookingProvider extends ChangeNotifier {
       _patient!.phone.trim().isNotEmpty &&
       !_isLoading &&
       _selectedService != null &&
-      _selectedSlot != null &&
-      _selectedSlot!.isAvailable &&
-      (!isFollowUp ||
-          _pendingFollowUpOrders.any(
-            (order) => order.id == _followUpOrderId,
-          )) &&
+      (isFollowUp
+          ? (_pendingFollowUpOrders.any(
+                  (order) => order.id == _followUpOrderId,
+                ) &&
+                (_selectedSlot?.isAvailable == true ||
+                    (followUpScheduledTime != null &&
+                        !isFollowUpScheduledTimeInPast)))
+          : (_selectedSlot != null && _selectedSlot!.isAvailable)) &&
       !_isSubmitting;
 
   // Setters & Patient Profile Management
@@ -292,6 +313,17 @@ class BookingProvider extends ChangeNotifier {
     final patientId = _sessionService.patientId;
     if (!_isCurrent || patientId == null || _sessionService.isDemo) {
       return false;
+    }
+    if (_patient == null || _patient!.id != patientId) {
+      final profile = await _patientService.getMyProfile();
+      if (!_isCurrent) return false;
+      if (profile != null) {
+        selectPatient(profile);
+      }
+    }
+    if (_serviceCatalog.isEmpty || _services.isEmpty) {
+      await _loadServicesCatalog();
+      if (!_isCurrent) return false;
     }
     await _loadFollowUpOrders(patientId);
     return setupFollowUpFromOrder(orderId);
@@ -361,17 +393,46 @@ class BookingProvider extends ChangeNotifier {
     _previousDiagnosis = order.diagnosis;
     _followUpAdvice = order.notes;
     _recommendedFollowUpDate = order.targetDate;
+    _recommendedFollowUpTime = order.targetTime;
     final target = order.targetDate;
     final targetDay = DateTime(target.year, target.month, target.day);
     _selectedDate = targetDay.isBefore(defaultBookingDate)
         ? defaultBookingDate
         : targetDay;
     _clinicalNotes = null;
+    _selectedSlot = null;
+    _errorMessage = null;
+    _bookingSuccessResult = null;
+    _lastSubmittedWasFollowUp = false;
 
     final matching = filteredServices;
-    _selectedService = matching.firstOrNull;
-    _fetchSlots();
+    if (!matching.any((s) => s.id == _selectedService?.id)) {
+      _selectedService = matching.firstOrNull;
+    }
+    if (isFollowUpScheduledTimeInPast) {
+      _fetchSlots();
+    } else {
+      _notify();
+    }
     return true;
+  }
+
+  Future<String?> loadFollowUpVisitAdvice(String orderId) async {
+    bool isSelected() =>
+        _isCurrent &&
+        _sessionService.isAuthenticated &&
+        !_sessionService.isDemo &&
+        _followUpOrderId == orderId;
+    if (!isSelected()) throw SessionChangedException();
+    final order = _pendingFollowUpOrders
+        .where((order) => order.id == orderId)
+        .firstOrNull;
+    if (order == null || order.patientId != _sessionService.patientId) {
+      throw SessionChangedException();
+    }
+    final summary = await _encounterService.getVisitSummary(order.encounterId);
+    if (!isSelected()) throw SessionChangedException();
+    return summary.plan?.trim();
   }
 
   void _clearFollowUpSelection() {
@@ -381,6 +442,7 @@ class BookingProvider extends ChangeNotifier {
     _previousDiagnosis = null;
     _followUpAdvice = null;
     _recommendedFollowUpDate = null;
+    _recommendedFollowUpTime = null;
     _clinicalNotes = null;
     _selectedDate = defaultBookingDate;
     _selectedSlot = null;
@@ -391,7 +453,8 @@ class BookingProvider extends ChangeNotifier {
   }
 
   void clearFollowUp() {
-    if (!isFollowUp) return;
+    if (!isFollowUp && !_lastSubmittedWasFollowUp) return;
+    _lastSubmittedWasFollowUp = false;
     _clearFollowUpSelection();
     _fetchSlots();
   }
@@ -513,12 +576,35 @@ class BookingProvider extends ChangeNotifier {
     _notify();
   }
 
+  Future<void> _loadServicesCatalog() async {
+    final services = await _serviceTypeService.getServiceTypes();
+    if (!_isCurrent) return;
+    _serviceCatalog = services;
+    _services = services
+        .where(
+          (service) =>
+              service.id.trim().isNotEmpty &&
+              service.id != '00000000-0000-0000-0000-000000000000' &&
+              (service.serviceType == null ||
+                  service.serviceType?.toLowerCase() == 'consultation' ||
+                  service.serviceType == '4'),
+        )
+        .toList();
+    _isServiceTypeDependencyMissing = _services.isEmpty;
+
+    final matching = filteredServices;
+    if (!matching.any((s) => s.id == _selectedService?.id)) {
+      _selectedService = matching.firstOrNull;
+    }
+  }
+
   /// Initializes booking screen data
   Future<void> initBooking([String? defaultPhone]) async {
     if (_isLoading) return;
     _isLoading = true;
     _errorMessage = null;
     _bookingSuccessResult = null;
+    _lastSubmittedWasFollowUp = false;
     _notify();
 
     try {
@@ -535,26 +621,8 @@ class BookingProvider extends ChangeNotifier {
       if (!_isCurrent) return;
 
       // 2. Fetch live services from BE
-      final services = await _serviceTypeService.getServiceTypes();
+      await _loadServicesCatalog();
       if (!_isCurrent) return;
-      _serviceCatalog = services;
-      _services = services
-          .where(
-            (service) =>
-                service.id.trim().isNotEmpty &&
-                service.id != '00000000-0000-0000-0000-000000000000' &&
-                (service.serviceType == null ||
-                    service.serviceType?.toLowerCase() == 'consultation' ||
-                    service.serviceType == '4'),
-          )
-          .toList();
-      _isServiceTypeDependencyMissing = _services.isEmpty;
-
-      // Select first matching service by category
-      final matching = filteredServices;
-      if (!matching.any((s) => s.id == _selectedService?.id)) {
-        _selectedService = matching.firstOrNull;
-      }
 
       // 3. Ensure valid booking date (from tomorrow onwards)
       if (_selectedDate.isBefore(defaultBookingDate)) {
@@ -688,18 +756,28 @@ class BookingProvider extends ChangeNotifier {
       _sessionService.setPatientId(currentPatient.id);
 
       // 2. Create Appointment in Backend
+      final order = orderId != null
+          ? _pendingFollowUpOrders
+                .where((item) => item.id == orderId)
+                .firstOrNull
+          : null;
+      final scheduledTime = orderId != null
+          ? (_selectedSlot?.startTime ?? followUpScheduledTime!)
+          : _selectedSlot!.startTime;
       final result = await _appointmentService.createAppointment(
         patientId: currentPatient.id,
         serviceTypeId: _selectedService!.id,
-        scheduledTime: _selectedSlot!.startTime,
+        scheduledTime: scheduledTime,
         followUpOrderId: orderId,
-        doctorId: _originalDoctorId,
+        doctorId: orderId != null ? _originalDoctorId : null,
+        departmentId: order?.departmentId,
       );
 
       if (!_isCurrent) return false;
       _bookingSuccessResult = result;
       _existingAppointment = result;
       _hasExistingAppointment = true;
+      _lastSubmittedWasFollowUp = orderId != null;
       if (orderId != null) {
         _pendingFollowUpOrders = _pendingFollowUpOrders
             .where((order) => order.id != orderId)
@@ -743,6 +821,7 @@ class BookingProvider extends ChangeNotifier {
   /// Resets booking state for a fresh booking session
   void resetBooking() {
     _bookingSuccessResult = null;
+    _lastSubmittedWasFollowUp = false;
     _selectedDate = defaultBookingDate;
     _selectedSlot = null;
     _hasExistingAppointment = false;
