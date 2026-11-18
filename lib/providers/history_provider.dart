@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import '../core/network/api_exceptions.dart';
 import '../services/patient_session_service.dart';
 import '../models/appointment_model.dart';
-import '../models/medical_record_model.dart';
 import '../services/appointment_service.dart';
 
 class HistoryProvider extends ChangeNotifier {
@@ -28,9 +27,8 @@ class HistoryProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _isRefreshing = false;
   String? _errorMessage;
-  int _selectedTabIndex = 0; // 0: Lịch hẹn, 1: Bệnh án & Đơn thuốc
+  int _selectedTabIndex = 0; // 0: Hồ sơ khám, 1: Lịch hẹn trực tuyến
   List<AppointmentModel> _appointments = [];
-  List<MedicalRecordModel> _medicalRecords = [];
   String? _cancellingAppointmentId;
   String? get cancellingAppointmentId => _cancellingAppointmentId;
 
@@ -39,12 +37,6 @@ class HistoryProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   int get selectedTabIndex => _selectedTabIndex;
   List<AppointmentModel> get appointments => _appointments;
-  List<MedicalRecordModel> get medicalRecords => _medicalRecords;
-  bool get isEmpty =>
-      !_isLoading &&
-      (_selectedTabIndex == 0
-          ? _appointments.isEmpty
-          : _medicalRecords.isEmpty);
 
   void setTab(int index) {
     if (_selectedTabIndex != index) {
@@ -65,7 +57,6 @@ class HistoryProvider extends ChangeNotifier {
     if (boundId != null && patientId != boundId) patientId = boundId;
     if (patientId == null || patientId.isEmpty) {
       _appointments = [];
-      _medicalRecords = [];
       _isLoading = false;
       _isRefreshing = false;
       _errorMessage = null;
@@ -94,10 +85,6 @@ class HistoryProvider extends ChangeNotifier {
       // Sort by scheduledTime descending
       list.sort((a, b) => b.scheduledTime.compareTo(a.scheduledTime));
       _appointments = list;
-
-      // Clinical records must come from an authorized clinical endpoint.
-      // Do not present generated diagnoses or prescriptions as this patient's data.
-      _medicalRecords = [];
 
       _errorMessage = null;
     } catch (e) {
@@ -178,7 +165,6 @@ class HistoryProvider extends ChangeNotifier {
   void logout() {
     _version++;
     _appointments = [];
-    _medicalRecords = [];
     _isLoading = false;
     _isRefreshing = false;
     _errorMessage = null;

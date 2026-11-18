@@ -91,4 +91,16 @@ class EncounterService {
     }
     return summary;
   }
+
+  Future<List<Map<String, dynamic>>> getNotifications(
+    String encounterId,
+  ) async {
+    final response = await _apiClient.get<List<Map<String, dynamic>>>(
+      '/encounters/${Uri.encodeComponent(encounterId)}/notifications',
+      fromJsonT: (json) => json is List
+          ? json.whereType<Map<String, dynamic>>().toList()
+          : const [],
+    );
+    return response.data ?? [];
+  }
 }

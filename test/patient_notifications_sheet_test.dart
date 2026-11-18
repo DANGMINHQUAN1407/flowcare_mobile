@@ -200,6 +200,83 @@ void main() {
   }
 
   testWidgets(
+    'PaymentSuccess server notification shows payment message and deduplicates local notice',
+    (tester) async {
+      ApiClient.setAuthToken('token');
+      final realtime = FakeRealtime();
+      final home = fakeHome(
+        encounters: FakeEncounters()
+          ..summary = summaryFixture(
+            status: 'InProgress',
+            encounterId: 'visit',
+          ),
+        realtime: realtime,
+      );
+      addTearDown(home.dispose);
+      await home.loadHomeData();
+      final visit = home.encounterSummary!.encounterId;
+      home.startUpdates();
+
+      realtime.callback!.call('NotificationReceived', {
+        'id': 'notif-1',
+        'encounterId': visit,
+        'type': 'PaymentSuccess',
+        'message': 'Đã chuyển tiền thành công 16.000 ₫ qua PayOS.',
+        'payloadJson': '{"referenceId":"order-urine","orderCode":123}',
+      });
+      expect(home.notices, hasLength(1));
+      expect(
+        home.notices.single.message,
+        'Đã chuyển tiền thành công 16.000 ₫ qua PayOS.',
+      );
+
+      home.addPaymentSuccessNotice(
+        encounterId: visit,
+        orderId: 'order-urine',
+        message:
+            'Đã chuyển tiền thành công 16.000 ₫ cho Tổng phân tích nước tiểu.',
+      );
+      expect(home.notices, hasLength(1));
+      expect(
+        home.notices.single.message,
+        'Đã chuyển tiền thành công 16.000 ₫ cho Tổng phân tích nước tiểu.',
+      );
+      home.stopUpdates();
+    },
+  );
+
+  testWidgets('Mobile loads payment confirmations missed while disconnected', (
+    tester,
+  ) async {
+    ApiClient.setAuthToken('token');
+    final encounters = FakeEncounters()
+      ..summary = summaryFixture(status: 'InProgress', encounterId: 'visit');
+    final home = fakeHome(encounters: encounters, realtime: FakeRealtime());
+    addTearDown(home.dispose);
+    await home.loadHomeData();
+    final visit = home.encounterSummary!.encounterId;
+    encounters.notifications = [
+      {
+        'id': 'payment-history',
+        'encounterId': visit,
+        'type': 'PaymentSuccess',
+        'message': 'Đã chuyển tiền thành công qua PayOS.',
+        'payloadJson': '{"referenceId":"order-urine"}',
+      },
+    ];
+    home.startUpdates();
+    await tester.pump();
+    expect(home.notices.single.key, 'payment:$visit:order-urine');
+    expect(home.unreadNoticeCount, 1);
+    home.markNoticesRead();
+    await home.refreshJourney();
+    await tester.pump();
+    expect(home.notices, hasLength(1));
+    expect(home.unreadNoticeCount, 0);
+    home.stopUpdates();
+  });
+
+  testWidgets(
     'logout removes the notification sheet with the old patient providers',
     (tester) async {
       PatientSessionService().clearSession();

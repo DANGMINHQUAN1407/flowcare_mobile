@@ -3,12 +3,14 @@ class VisitSummaryModel {
   final String? diagnosis;
   final String? plan;
   final List<VisitPrescriptionItem> prescriptions;
+  final List<VisitServiceResult> services;
 
   const VisitSummaryModel({
     required this.encounterId,
     this.diagnosis,
     this.plan,
     this.prescriptions = const [],
+    this.services = const [],
   });
 
   factory VisitSummaryModel.fromJson(Map<String, dynamic> json) =>
@@ -22,6 +24,39 @@ class VisitSummaryModel {
                   VisitPrescriptionItem.fromJson(item as Map<String, dynamic>),
             )
             .toList(),
+        services: (json['services'] as List? ?? const [])
+            .map(
+              (item) =>
+                  VisitServiceResult.fromJson(item as Map<String, dynamic>),
+            )
+            .toList(),
+      );
+}
+
+class VisitServiceResult {
+  final String serviceName;
+  final String status;
+  final String? result;
+  final String? resultNotes;
+  final DateTime? resultFinalizedAt;
+
+  const VisitServiceResult({
+    required this.serviceName,
+    required this.status,
+    this.result,
+    this.resultNotes,
+    this.resultFinalizedAt,
+  });
+
+  factory VisitServiceResult.fromJson(Map<String, dynamic> json) =>
+      VisitServiceResult(
+        serviceName: json['serviceName'] as String,
+        status: json['status'] as String,
+        result: json['result'] as String?,
+        resultNotes: json['resultNotes'] as String?,
+        resultFinalizedAt: DateTime.tryParse(
+          json['resultFinalizedAt']?.toString() ?? '',
+        ),
       );
 }
 

@@ -4,8 +4,8 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/appointment_model.dart';
-import '../../models/medical_record_model.dart';
 import '../../models/patient_model.dart';
+import '../../models/patient_visit_model.dart';
 import '../../providers/history_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../widgets/empty_state_widget.dart';
@@ -13,17 +13,91 @@ import '../../widgets/error_state_widget.dart';
 import '../../widgets/loading_state_widget.dart';
 import '../../core/utils/hospital_time.dart';
 import '../../widgets/appointment_cancel_button.dart';
+import '../../widgets/visit_summary_card.dart';
 
-class HistoryScreen extends StatelessWidget {
-  final void Function(int tabIndex)? onNavigateToTab;
+class HistoryScreen extends StatefulWidget {
+  final bool isVisible;
 
-  const HistoryScreen({super.key, this.onNavigateToTab});
+  const HistoryScreen({super.key, this.isVisible = true});
+
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  PatientVisitModel? _openedVisit;
+
+  @override
+  void didUpdateWidget(covariant HistoryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isVisible) _openedVisit = null;
+  }
+
+  Widget _visitDetails(HomeProvider home, PatientVisitModel visit) {
+    final latest =
+        home.visits
+            .where((item) => item.encounterId == visit.encounterId)
+            .firstOrNull ??
+        visit;
+    final finalized =
+        latest.isFinalized ||
+        (home.encounterSummary?.encounterId == visit.encounterId &&
+            home.encounterSummary?.isFinalized == true);
+    void close() => setState(() => _openedVisit = null);
+
+    return PopScope(
+      canPop: !widget.isVisible,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && widget.isVisible) close();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          leading: BackButton(onPressed: close),
+          title: const Text('Chi tiết lượt khám'),
+        ),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(
+                latest.serviceTypeName,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              Text(hospitalTime(latest.visitTime, pattern: 'dd/MM/yyyy')),
+              const SizedBox(height: 16),
+              VisitSummaryCard(
+                encounterId: latest.encounterId,
+                refreshToken: finalized,
+                load: home.loadVisitSummary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Consumer2<HomeProvider, HistoryProvider>(
       builder: (context, homeProvider, historyProvider, child) {
         final patient = homeProvider.patient;
+        if (_openedVisit case final visit?) {
+          return _visitDetails(homeProvider, visit);
+        }
+
+        Future<void> refresh() async {
+          await Future.wait([
+            homeProvider.loadHomeData(isRefresh: true),
+            historyProvider.loadAppointments(
+              homeProvider.patientId,
+              isRefresh: true,
+              phone: homeProvider.currentPhone,
+              patientName: patient?.fullName,
+            ),
+          ]);
+        }
 
         return Scaffold(
           backgroundColor: AppColors.background,
@@ -33,23 +107,13 @@ class HistoryScreen extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.refresh_rounded),
                 tooltip: 'Làm mới',
-                onPressed: () => historyProvider.loadAppointments(
-                  homeProvider.patientId,
-                  isRefresh: true,
-                  phone: homeProvider.currentPhone,
-                  patientName: patient?.fullName,
-                ),
+                onPressed: refresh,
               ),
             ],
           ),
           body: SafeArea(
             child: RefreshIndicator(
-              onRefresh: () => historyProvider.loadAppointments(
-                homeProvider.patientId,
-                isRefresh: true,
-                phone: homeProvider.currentPhone,
-                patientName: patient?.fullName,
-              ),
+              onRefresh: refresh,
               color: AppColors.primary,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -242,58 +306,6 @@ class HistoryScreen extends StatelessWidget {
 
                     const SizedBox(height: 16),
 
-                    if (homeProvider.visits.isNotEmpty) ...[
-                      const Text(
-                        'Lượt khám tại bệnh viện',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      ...homeProvider.visits.map(
-                        (visit) => Card(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 8,
-                            ),
-                            leading: Icon(
-                              visit.isFinalized
-                                  ? Icons.check_circle_outline_rounded
-                                  : Icons.route_outlined,
-                              color: visit.isFinalized
-                                  ? AppColors.success
-                                  : AppColors.primary,
-                            ),
-                            title: Text(
-                              visit.serviceTypeName,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            subtitle: Text(
-                              hospitalTime(
-                                    visit.visitTime,
-                                    pattern: 'dd/MM/yyyy',
-                                  ) +
-                                  (visit.isFinalized
-                                      ? ' · Đã hoàn tất'
-                                      : ' · Đang theo dõi'),
-                            ),
-                            trailing: const Icon(Icons.chevron_right_rounded),
-                            onTap: () {
-                              homeProvider.selectVisit(visit.encounterId);
-                              onNavigateToTab?.call(2);
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                    ],
-
                     // Segmented Tab Selector
                     Container(
                       decoration: BoxDecoration(
@@ -307,10 +319,10 @@ class HistoryScreen extends StatelessWidget {
                           Expanded(
                             child: _buildTabButton(
                               context: context,
-                              title: 'Lịch hẹn trực tuyến',
-                              icon: Icons.calendar_month_rounded,
+                              title: 'Hồ sơ khám',
+                              icon: Icons.medical_services_rounded,
                               isSelected: historyProvider.selectedTabIndex == 0,
-                              count: historyProvider.appointments.length,
+                              count: homeProvider.visits.length,
                               onTap: () => historyProvider.setTab(0),
                             ),
                           ),
@@ -318,10 +330,10 @@ class HistoryScreen extends StatelessWidget {
                           Expanded(
                             child: _buildTabButton(
                               context: context,
-                              title: 'Sổ khám & Đơn thuốc',
-                              icon: Icons.medical_services_rounded,
+                              title: 'Lịch hẹn trực tuyến',
+                              icon: Icons.calendar_month_rounded,
                               isSelected: historyProvider.selectedTabIndex == 1,
-                              count: historyProvider.medicalRecords.length,
+                              count: historyProvider.appointments.length,
                               onTap: () => historyProvider.setTab(1),
                             ),
                           ),
@@ -427,6 +439,63 @@ class HistoryScreen extends StatelessWidget {
     HomeProvider homeProvider,
     HistoryProvider historyProvider,
   ) {
+    if (historyProvider.selectedTabIndex == 0) {
+      if (homeProvider.visits.isEmpty) {
+        if (homeProvider.isLoading) {
+          return const LoadingStateWidget(message: 'Đang tải hồ sơ khám...');
+        }
+        if (homeProvider.errorMessage case final message?) {
+          return ErrorStateWidget(
+            message: message,
+            onRetry: () => homeProvider.loadHomeData(isRefresh: true),
+          );
+        }
+        return const EmptyStateWidget(
+          icon: Icons.medical_information_outlined,
+          title: 'Chưa có lượt khám tại bệnh viện',
+          message: 'Hồ sơ lượt khám sẽ hiển thị khi bệnh viện tiếp nhận.',
+        );
+      }
+      return Column(
+        children: [
+          ...homeProvider.visits.map(
+            (visit) => Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                leading: Icon(
+                  visit.isFinalized
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.route_outlined,
+                  color: visit.isFinalized
+                      ? AppColors.success
+                      : AppColors.primary,
+                ),
+                title: Text(
+                  visit.serviceTypeName,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                subtitle: Text(
+                  hospitalTime(visit.visitTime, pattern: 'dd/MM/yyyy') +
+                      (visit.isFinalized
+                          ? ' · Đã hoàn tất'
+                          : ' · Đang theo dõi'),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => setState(() => _openedVisit = visit),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     if (historyProvider.isLoading) {
       return const LoadingStateWidget(
         message: 'Đang tải dữ liệu hồ sơ từ hệ thống bệnh viện...',
@@ -444,50 +513,27 @@ class HistoryScreen extends StatelessWidget {
       );
     }
 
-    // TAB 0: LỊCH HẸN TRỰC TUYẾN
-    if (historyProvider.selectedTabIndex == 0) {
-      if (historyProvider.appointments.isEmpty) {
-        return const EmptyStateWidget(
-          icon: Icons.event_busy_rounded,
-          title: 'Chưa có lịch hẹn nào',
-          message: 'Bệnh nhân chưa phát sinh lượt đăng ký khám trực tuyến nào.',
-        );
-      }
-
-      return ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: historyProvider.appointments.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final appointment = historyProvider.appointments[index];
-          return _buildAppointmentCard(
-            context,
-            appointment,
-            homeProvider.patient,
-            homeProvider.currentPhone,
-          );
-        },
-      );
-    }
-
-    // TAB 1: SỔ KHÁM BỆNH & ĐƠN THUỐC ĐIỆN TỬ
-    if (historyProvider.medicalRecords.isEmpty) {
+    if (historyProvider.appointments.isEmpty) {
       return const EmptyStateWidget(
-        icon: Icons.medical_information_outlined,
-        title: 'Chưa có lượt khám hoàn tất',
-        message: 'Hồ sơ khám và đơn thuốc sẽ xuất hiện tại đây sau khi Bác sĩ hoàn tất khám.',
+        icon: Icons.event_busy_rounded,
+        title: 'Chưa có lịch hẹn nào',
+        message: 'Bệnh nhân chưa phát sinh lượt đăng ký khám trực tuyến nào.',
       );
     }
 
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: historyProvider.medicalRecords.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 16),
+      itemCount: historyProvider.appointments.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        final record = historyProvider.medicalRecords[index];
-        return _buildMedicalRecordCard(context, record);
+        final appointment = historyProvider.appointments[index];
+        return _buildAppointmentCard(
+          context,
+          appointment,
+          homeProvider.patient,
+          homeProvider.currentPhone,
+        );
       },
     );
   }
@@ -757,447 +803,6 @@ class HistoryScreen extends StatelessWidget {
   }
 
   // --- MEDICAL RECORD CARD (ENCOUNTER & PRESCRIPTIONS) ---
-  Widget _buildMedicalRecordCard(
-    BuildContext context,
-    MedicalRecordModel record,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.success.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.successLight.withValues(alpha: 0.4),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
-              ),
-              border: Border(
-                bottom: BorderSide(
-                  color: AppColors.success.withValues(alpha: 0.2),
-                ),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.check_circle_rounded,
-                          color: AppColors.success,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          record.departmentName,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.success,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'Đã hoàn tất',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: AppColors.primary.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Text(
-                        'STT: ${record.ticketNumber}',
-                        style: const TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      record.roomName,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Doctor & Vital signs
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.person_rounded,
-                      size: 16,
-                      color: AppColors.primary,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Bác sĩ: ${record.doctorName}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      DateFormat('dd/MM/yyyy').format(record.visitDate),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-
-                if (record.vitalSigns != null) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.background,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildVitalBadge(
-                          'Tuần thai',
-                          '${record.vitalSigns!.gestationalWeeks}w',
-                          Icons.child_care_rounded,
-                        ),
-                        _buildVitalBadge(
-                          'Huyết áp',
-                          record.vitalSigns!.bloodPressure,
-                          Icons.favorite_border_rounded,
-                        ),
-                        _buildVitalBadge(
-                          'Tim thai',
-                          '${record.vitalSigns!.fetalHeartRate} bpm',
-                          Icons.monitor_heart_rounded,
-                        ),
-                        _buildVitalBadge(
-                          'Cân nặng',
-                          '${record.vitalSigns!.weight} kg',
-                          Icons.monitor_weight_outlined,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 16),
-
-                // Diagnosis
-                const Text(
-                  'KẾT LUẬN CHẨN ĐOÁN',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  record.diagnosis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    height: 1.4,
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Doctor Advice
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.secondary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: AppColors.secondary.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.tips_and_updates_rounded,
-                        color: AppColors.secondary,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Lời dặn của Bác sĩ:',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.secondary,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              record.doctorAdvice,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textPrimary,
-                                height: 1.3,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Prescription Section
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.medication_rounded,
-                      size: 16,
-                      color: AppColors.primary,
-                    ),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'ĐƠN THUỐC ĐIỆN TỬ',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${record.prescriptions.length} loại thuốc',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ...record.prescriptions.map(
-                  (item) => _buildPrescriptionTile(item),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Lab Orders Section
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.biotech_rounded,
-                      size: 16,
-                      color: AppColors.warning,
-                    ),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'KẾT QUẢ CẬN LÂM SÀNG',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                        color: AppColors.warning,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ...record.labOrders.map((order) => _buildLabOrderTile(order)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVitalBadge(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Icon(icon, size: 16, color: AppColors.primary),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 9, color: AppColors.textSecondary),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPrescriptionTile(PrescriptionItem item) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  item.medicineName,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              Text(
-                '${item.quantity} ${item.unit}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '• Cách dùng: ${item.usage}',
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLabOrderTile(ClinicalLabOrder order) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.check_circle_outline_rounded,
-            size: 16,
-            color: AppColors.success,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  order.orderName,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${order.departmentRoom} • Kết quả: ${order.result}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildStatusBadge(String status) {
     Color bg;

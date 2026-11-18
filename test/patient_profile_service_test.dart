@@ -222,4 +222,38 @@ void main() {
       expect(provider.isLoading, isFalse);
     },
   );
+
+  test('maps obstetric profile fields from canonical and encounter fallback keys', () async {
+    final result = await service((_) async {
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'id': patientId,
+            'fullName': 'Patient profile test',
+            'phone': '0900000000',
+            'heightCm': 158,
+            'gestationalAgeWeeks': 20,
+            'gestationalAgeDays': 5,
+            'paraCode': '4121',
+            'lastMenstrualPeriod': '2026-11-11',
+            'expectedDueDate': '2027-08-18',
+            'obstetricHistory': ' ',
+            'menstrualCycle': 'Đều (28 - 30 ngày)',
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    }).getMyProfile();
+
+    expect(result!.heightCm, 158);
+    expect(result.gestationalWeeks, 20);
+    expect(result.gestationalDays, 5);
+    expect(result.para, '4121');
+    expect(result.lmp, '2026-11-11');
+    expect(result.edd, '2027-08-18');
+    expect(result.obstetricHistory, isNull);
+    expect(result.menstrualCycle, 'Đều (28 - 30 ngày)');
+  });
 }
