@@ -11,7 +11,6 @@ import '../../widgets/patient_notifications_sheet.dart';
 import '../../widgets/journey_timing_card.dart';
 import '../../widgets/journey_next_stop.dart';
 import '../../widgets/route_optimization_card.dart';
-import '../../widgets/visit_summary_card.dart';
 import '../../services/route_optimization_service.dart';
 import '../../services/medical_payment_service.dart';
 import '../../services/patient_session_service.dart';
@@ -121,14 +120,9 @@ class _RouteScreenState extends State<RouteScreen> {
     );
   }
 
-  Future<void> _showPayment(
-    HomeProvider home,
-    String encounterId,
-    MedicalPaymentOrder order,
-  ) async {
-    final orderId = order.id;
+  Future<void> _showPayment(HomeProvider home, String encounterId) async {
     final session = (PatientSessionService().version, ApiClient.sessionVersion);
-    bool isOrderPayable() {
+    bool canPay() {
       final journey = _paymentJourney(home);
       final orders = _plannedOrders(journey);
       return mounted &&
@@ -137,32 +131,72 @@ class _RouteScreenState extends State<RouteScreen> {
               (PatientSessionService().version, ApiClient.sessionVersion) &&
           journey?.summary.encounterId == encounterId &&
           !_needsReview(journey, orders) &&
-          orders.any((item) => item.id == orderId);
+          orders.isNotEmpty;
     }
 
-    if (_paymentDialogOpen || !isOrderPayable()) return;
+    if (_paymentDialogOpen || !canPay()) return;
     _paymentDialogOpen = true;
     try {
       setState(() => _billing = null);
-      double? outstanding;
+      Map<String, double> balances;
       try {
-        outstanding = (await _billingFor(home, encounterId))[orderId];
+        balances = await _billingFor(home, encounterId);
       } catch (_) {
         return; // The payment panel reports the billing error and offers a retry.
       }
-      if (!mounted || !isOrderPayable() || outstanding == null) return;
-      final paid = await showMedicalPaymentReminder(
+      if (!mounted || !canPay()) return;
+      final orders = _plannedOrders(_paymentJourney(home))
+          .where((item) => balances.containsKey(item.id))
+          .toList();
+      if (orders.isEmpty) return;
+      final outstanding = orders.fold<double>(
+        0,
+        (sum, item) => sum + balances[item.id]!,
+      );
+      const serviceName = 'phí cận lâm sàng';
+      final payment = await showMedicalPaymentReminder(
         context,
         encounterId: encounterId,
         patientId: home.patientId!,
-        orderId: orderId,
-        serviceName: order.name,
+        orderIds: orders.map((item) => item.id).toList(),
+        serviceName: serviceName,
         outstanding: outstanding,
         paymentService: _paymentService,
       );
-      if (isOrderPayable()) {
+      final sameVisitSession =
+          mounted &&
+          session ==
+              (PatientSessionService().version, ApiClient.sessionVersion) &&
+          home.encounterSummary?.encounterId == encounterId;
+      if (payment != null && sameVisitSession) {
+        final transferredAmount = payment.transferredAmount;
+        var message = payment.billChanged
+            ? 'Bảng kê đã thay đổi. Vui lòng kiểm tra tổng tiền mới.'
+            : 'Phí cận lâm sàng đã được thanh toán.';
+        if (transferredAmount != null) {
+          final formattedAmount = formatMedicalPaymentAmount(transferredAmount);
+          message =
+              'Đã chuyển tiền thành công $formattedAmount cho $serviceName.';
+          if (payment.orderCode case final code?) {
+            home.addPaymentSuccessNotice(
+              encounterId: encounterId,
+              orderId: code.toString(),
+              message: message,
+            );
+          }
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: payment.billChanged ? null : AppColors.success,
+              content: Text(message),
+            ),
+          );
+        }
         setState(() => _billing = null);
-        if (paid == true) await home.refreshJourney(includeFinalized: true);
+        await home.refreshJourney(includeFinalized: true);
+      } else if (canPay()) {
+        setState(() => _billing = null);
       }
     } finally {
       _paymentDialogOpen = false;
@@ -238,19 +272,6 @@ class _RouteScreenState extends State<RouteScreen> {
                     isStale: home.isJourneyStale,
                     hasSnapshot: home.lastUpdatedAt != null,
                   ),
-                  if (journey.isFinalized &&
-                      !PatientSessionService().isDemo &&
-                      home.patientId != null) ...[
-                    const SizedBox(height: 16),
-                    VisitSummaryCard(
-                      key: ValueKey(
-                        'summary:${PatientSessionService().version}:${journey.summary.encounterId}',
-                      ),
-                      encounterId: journey.summary.encounterId,
-                      refreshToken: home.lastUpdatedAt,
-                      load: home.loadVisitSummary,
-                    ),
-                  ],
                   if (journey.plan?.followsOriginalOrder == true) ...[
                     const SizedBox(height: 12),
                     const Text(
@@ -403,12 +424,22 @@ class _RouteScreenState extends State<RouteScreen> {
                 'Thanh toán cận lâm sàng',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
+              const SizedBox(height: 8),
               for (final order in payable)
-                _paymentButton(
-                  order,
-                  outstanding[order.id]!,
-                  () => _showPayment(home, encounterId, order),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    '${order.name} · ${formatMedicalPaymentAmount(outstanding[order.id]!)}',
+                  ),
                 ),
+              const SizedBox(height: 8),
+              _paymentButton(
+                payable.fold<double>(
+                  0,
+                  (sum, order) => sum + outstanding[order.id]!,
+                ),
+                () => _showPayment(home, encounterId),
+              ),
             ],
           ),
         ),
@@ -416,11 +447,7 @@ class _RouteScreenState extends State<RouteScreen> {
     },
   );
 
-  Widget _paymentButton(
-    MedicalPaymentOrder order,
-    double amount,
-    VoidCallback onPressed,
-  ) => SizedBox(
+  Widget _paymentButton(double amount, VoidCallback onPressed) => SizedBox(
     width: double.infinity,
     child: OutlinedButton.icon(
       style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft),
@@ -431,9 +458,9 @@ class _RouteScreenState extends State<RouteScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(order.name),
+            const Text('Thanh toán tổng phí'),
             Text(
-              'Còn phải trả: ${formatMedicalPaymentAmount(amount)}',
+              'Tổng còn phải trả: ${formatMedicalPaymentAmount(amount)}',
               style: const TextStyle(
                 fontSize: 12,
                 color: AppColors.textSecondary,

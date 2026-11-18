@@ -341,6 +341,10 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
         offer?.encounterId == widget.encounterId;
     final reviewing = validOffer && _reviewedOfferId == data?.proposedPlanId;
     final enabled = _canRespond && _error == null && reviewing && !expired;
+    final reviewedOffer = reviewing && !expired ? data : null;
+    final currentPlan = widget.onRouteReviewed == null
+        ? null
+        : widget.currentPlan;
     final appliedPlan = _appliedPlan ?? widget.currentPlan;
     final canRequest =
         widget.requestedOfferId == null &&
@@ -407,16 +411,31 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
               )
             else if (expired)
               const Text('Đề xuất tối ưu đã hết hạn.'),
-            if ((widget.onRouteReviewed == null ? null : widget.currentPlan)
-                case final plan?) ...[
-              Text(
-                'Thứ tự dịch vụ hiện tại · ${journeyMinutes(plan.estimatedTotalMinutes)}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              for (final step in plan.steps)
+            if (reviewedOffer != null) ...[
+              if (reviewedOffer.savedMinutes case final minutes?)
                 Text(
-                  '${step.stepOrder}. ${step.serviceTypeName} · ${step.location}',
+                  'Dự kiến tiết kiệm $minutes phút.',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
+              if (currentPlan == null &&
+                  reviewedOffer.currentTotalMinutes != null)
+                Text(
+                  'Lộ trình hiện tại · ${reviewedOffer.currentTotalMinutes} phút',
+                ),
+              if (reviewedOffer.expiresAt case final expires?)
+                Text(
+                  'Có hiệu lực đến ${TimeOfDay.fromDateTime(expires.toLocal()).format(context)}',
+                ),
+            ],
+            if (currentPlan != null) ...[
+              const SizedBox(height: 8),
+              _RouteStepsSection(
+                key: ValueKey('current-route-${currentPlan.id}'),
+                title: 'Lộ trình hiện tại',
+                plan: currentPlan,
+                totalMinutes: reviewedOffer?.currentTotalMinutes?.toDouble(),
+              ),
+              const SizedBox(height: 8),
             ],
             if (!validOffer &&
                 !_routeLocked &&
@@ -434,38 +453,22 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
                       : 'Tối ưu lộ trình',
                 ),
               ),
-            if (reviewing && !expired && offer != null && data != null) ...[
-              if (data.savedMinutes != null)
-                Text(
-                  'Dự kiến tiết kiệm ${data.savedMinutes} phút.',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              if (data.currentTotalMinutes != null &&
-                  data.offeredTotalMinutes != null)
-                Text(
-                  'Hiện tại ${data.currentTotalMinutes} phút · Đề xuất ${data.offeredTotalMinutes} phút',
-                ),
-              if (data.expiresAt case final expires?)
-                Text(
-                  'Có hiệu lực đến ${TimeOfDay.fromDateTime(expires.toLocal()).format(context)}',
-                ),
-              if (offer.steps.isNotEmpty)
-                const Text(
-                  'Thứ tự đề xuất',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              for (final step in offer.steps)
-                Text(
-                  '${step.stepOrder}. ${step.serviceTypeName} · ${step.location}',
+            if (reviewedOffer != null) ...[
+              if (reviewedOffer.offer case final plan?)
+                _RouteStepsSection(
+                  key: ValueKey('proposed-route-${plan.id}'),
+                  title: 'Lộ trình đề xuất',
+                  plan: plan,
+                  totalMinutes: reviewedOffer.offeredTotalMinutes?.toDouble(),
                 ),
               const SizedBox(height: 8),
               FilledButton(
                 key: const ValueKey('accept-route-offer'),
-                onPressed: enabled ? () => _confirmAccept(data) : null,
+                onPressed: enabled ? () => _confirmAccept(reviewedOffer) : null,
                 child: const Text('Chấp nhận đề xuất'),
               ),
               OutlinedButton(
-                onPressed: enabled ? () => _decline(data) : null,
+                onPressed: enabled ? () => _decline(reviewedOffer) : null,
                 child: const Text('Từ chối đề xuất'),
               ),
             ],
@@ -473,33 +476,83 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
               Text('Lộ trình đã áp dụng · Dự kiến tiết kiệm $minutes phút.'),
             if (_appliedPlan case final plan?) ...[
               if (_previousPlan case final previous?
-                  when previous.id != plan.id)
-                ExpansionTile(
-                  title: const Text('Lộ trình trước khi thay thế'),
-                  children: [
-                    for (final step in previous.steps)
-                      ListTile(
-                        title: Text(
-                          '${step.stepOrder}. ${step.serviceTypeName} · ${step.location}',
-                        ),
-                      ),
-                  ],
+                  when previous.id != plan.id) ...[
+                const SizedBox(height: 8),
+                _RouteStepsSection(
+                  key: ValueKey('previous-route-${previous.id}'),
+                  title: 'Lộ trình trước khi thay thế',
+                  plan: previous,
                 ),
+              ],
               if (widget.onRouteReviewed == null ||
                   widget.currentPlan?.id != plan.id) ...[
-                const Text(
-                  'Lộ trình đã áp dụng',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                const SizedBox(height: 8),
+                _RouteStepsSection(
+                  key: ValueKey('applied-route-${plan.id}'),
+                  title: 'Lộ trình đã áp dụng',
+                  plan: plan,
                 ),
-                for (final step in plan.steps)
-                  Text(
-                    '${step.stepOrder}. ${step.serviceTypeName} · ${step.location}',
-                  ),
               ],
             ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _RouteStepsSection extends StatelessWidget {
+  final String title;
+  final ParaclinicalPlanModel plan;
+  final double? totalMinutes;
+
+  const _RouteStepsSection({
+    super.key,
+    required this.title,
+    required this.plan,
+    this.totalMinutes,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const padding = EdgeInsets.symmetric(horizontal: 12);
+    final heading = Text(
+      title,
+      style: const TextStyle(fontWeight: FontWeight.bold),
+    );
+    final duration = Text(
+      journeyMinutes(totalMinutes ?? plan.estimatedTotalMinutes),
+    );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: plan.steps.isEmpty
+          ? ListTile(
+              contentPadding: padding,
+              title: heading,
+              subtitle: duration,
+              dense: true,
+            )
+          : ExpansionTile(
+              tilePadding: padding,
+              shape: const Border(),
+              collapsedShape: const Border(),
+              title: heading,
+              subtitle: duration,
+              children: [
+                for (final step in plan.steps)
+                  ListTile(
+                    contentPadding: padding,
+                    dense: true,
+                    title: Text('${step.stepOrder}. ${step.serviceTypeName}'),
+                    subtitle: step.location.isEmpty
+                        ? null
+                        : Text(step.location),
+                  ),
+              ],
+            ),
     );
   }
 }

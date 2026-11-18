@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:flowcare_mobile/providers/home_provider.dart';
+import 'package:flowcare_mobile/providers/history_provider.dart';
+import 'package:flowcare_mobile/screens/history/history_screen.dart';
 import 'package:flowcare_mobile/screens/route/route_screen.dart';
 import 'package:flowcare_mobile/services/patient_session_service.dart';
 import 'package:flowcare_mobile/models/paraclinical_plan_model.dart';
 import 'package:flowcare_mobile/core/network/api_client.dart';
 import 'package:flowcare_mobile/core/network/api_exceptions.dart';
 import 'package:flowcare_mobile/models/visit_summary_model.dart';
+import 'package:flowcare_mobile/models/patient_visit_model.dart';
 import 'package:flowcare_mobile/models/route_optimization_model.dart';
 import 'package:flowcare_mobile/services/route_optimization_service.dart';
 
@@ -17,6 +20,18 @@ import 'fixtures/journey_fixtures.dart';
 class _VisitSummaryEncounters extends FakeEncounters {
   final requestedIds = <String>[];
   Object? visitSummaryError;
+
+  @override
+  Future<List<PatientVisitModel>?> getPatientHistory(String patientId) async =>
+      [
+        ...?await super.getPatientHistory(patientId),
+        PatientVisitModel(
+          encounterId: 'old-visit',
+          serviceTypeName: 'Khoa Sản - Phụ Khoa',
+          status: 'Completed',
+          createdAt: DateTime.utc(2026, 10, 1),
+        ),
+      ];
 
   @override
   Future<VisitSummaryModel> getVisitSummary(String encounterId) async {
@@ -32,6 +47,15 @@ class _VisitSummaryEncounters extends FakeEncounters {
           'quantity': 12,
           'dosage': 'Liều dùng đã lưu',
           'instructions': 'Hướng dẫn đã lưu',
+        },
+      ],
+      'services': [
+        {
+          'serviceName': 'Tổng phân tích nước tiểu',
+          'status': 'Completed',
+          'result': 'Kết quả CLS đã chốt',
+          'resultNotes': 'Ghi chú xét nghiệm đã lưu',
+          'resultFinalizedAt': '2026-10-01T06:30:00Z',
         },
       ],
     });
@@ -137,10 +161,9 @@ void main() {
         patientId: 'patient',
         userName: 'patient.test',
       );
-      final home = fakeHome(
-        encounters: _VisitSummaryEncounters()
-          ..plan = ParaclinicalPlanModel.fromJson(timedPlanJson()),
-      );
+      final encounters = _VisitSummaryEncounters()
+        ..plan = ParaclinicalPlanModel.fromJson(timedPlanJson());
+      final home = fakeHome(encounters: encounters);
       addTearDown(home.dispose);
       addTearDown(() => PatientSessionService().clearSession());
       await home.loadHomeData();
@@ -158,6 +181,8 @@ void main() {
         ),
       );
       expect(find.text('Đã hoàn tất lượt khám'), findsWidgets);
+      expect(encounters.requestedIds, isEmpty);
+      expect(find.text('Đơn thuốc đã kê'), findsNothing);
       expect(find.textContaining('12/10/2026'), findsWidgets);
       expect(find.textContaining('Đang chờ gọi số'), findsNothing);
       expect(find.textContaining('Mai Hoa'), findsNothing);
@@ -183,45 +208,69 @@ void main() {
     },
   );
 
-  testWidgets('Retries the completed visit summary and shows saved content', (
-    tester,
-  ) async {
-    final session = PatientSessionService()
-      ..bindPatient(patientId: 'patient', userName: 'patient.test');
-    addTearDown(session.clearSession);
-    final encounters = _VisitSummaryEncounters()
-      ..visitSummaryError = ApiException(
-        'Chưa chốt',
-        data: {
-          'errors': ['VISIT_NOT_FINALIZED'],
-        },
+  testWidgets(
+    'History opens the selected visit without switching the current route',
+    (tester) async {
+      final session = PatientSessionService()
+        ..bindPatient(patientId: 'patient', userName: 'patient.test');
+      addTearDown(session.clearSession);
+      final encounters = _VisitSummaryEncounters()
+        ..visitSummaryError = ApiException(
+          'Chưa chốt',
+          data: {
+            'errors': ['VISIT_NOT_FINALIZED'],
+          },
+        );
+      final home = fakeHome(encounters: encounters);
+      addTearDown(home.dispose);
+      await home.loadHomeData();
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<HomeProvider>.value(value: home),
+            ChangeNotifierProvider(create: (_) => HistoryProvider()),
+          ],
+          child: const MaterialApp(home: HistoryScreen()),
+        ),
       );
-    final home = fakeHome(encounters: encounters);
-    addTearDown(home.dispose);
-    await home.loadHomeData();
-    await tester.pumpWidget(
-      ChangeNotifierProvider<HomeProvider>.value(
-        value: home,
-        child: const MaterialApp(home: RouteScreen()),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-    expect(
-      find.text('Tóm tắt sẽ có sau khi bác sĩ hoàn tất lượt khám.'),
-      findsOneWidget,
-    );
-    expect(encounters.requestedIds, ['patient']);
-    encounters.visitSummaryError = null;
-    await tester.tap(find.text('Thử tải lại tóm tắt'));
-    await tester.pumpAndSettle();
+      final currentRoute = home.encounterSummary!.encounterId;
+      await tester.tap(find.text('Khoa Sản - Phụ Khoa'));
+      await tester.pumpAndSettle();
+      expect(find.text('Chi tiết lượt khám'), findsOneWidget);
+      expect(
+        find.text('Hồ sơ sẽ có sau khi bác sĩ hoàn tất lượt khám.'),
+        findsOneWidget,
+      );
+      expect(encounters.requestedIds, ['old-visit']);
+      expect(home.encounterSummary!.encounterId, currentRoute);
+      encounters.visitSummaryError = null;
+      await tester.tap(find.text('Thử tải lại hồ sơ'));
+      await tester.pumpAndSettle();
 
-    expect(encounters.requestedIds, ['patient', 'patient']);
-    expect(find.text('Chẩn đoán đã lưu'), findsOneWidget);
-    expect(find.text('Lời dặn đã lưu'), findsOneWidget);
-    expect(find.text('Thuốc kiểm thử'), findsOneWidget);
-    expect(find.text('Số lượng: 12'), findsOneWidget);
-    expect(find.text('Liều dùng: Liều dùng đã lưu'), findsOneWidget);
-    expect(find.text('Hướng dẫn sử dụng: Hướng dẫn đã lưu'), findsOneWidget);
-  });
+      expect(encounters.requestedIds, ['old-visit', 'old-visit']);
+      expect(find.text('Chẩn đoán đã lưu'), findsOneWidget);
+      expect(find.text('Lời dặn đã lưu'), findsOneWidget);
+      expect(find.text('Thuốc kiểm thử'), findsOneWidget);
+      expect(find.text('Số lượng: 12'), findsOneWidget);
+      expect(find.text('Liều dùng: Liều dùng đã lưu'), findsOneWidget);
+      expect(find.text('Hướng dẫn sử dụng: Hướng dẫn đã lưu'), findsOneWidget);
+      final results = find.text('Kết quả cận lâm sàng');
+      expect(
+        tester.getTopLeft(results).dy,
+        greaterThan(tester.getTopLeft(find.text('Đơn thuốc đã kê')).dy),
+      );
+      await tester.scrollUntilVisible(
+        find.text('Kết quả CLS đã chốt'),
+        100,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Ghi chú: Ghi chú xét nghiệm đã lưu'), findsOneWidget);
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.text('Lịch sử lịch hẹn & Khám'), findsOneWidget);
+      expect(find.text('Lịch hẹn trực tuyến'), findsOneWidget);
+    },
+  );
 }

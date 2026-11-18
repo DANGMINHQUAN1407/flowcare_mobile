@@ -7,6 +7,7 @@ typedef MedicalPaymentOrder = ({String id, String name});
 class MedicalPaymentLink {
   final int orderCode;
   final num amount;
+  final num? paidAmount;
   final String status;
   final String? qrCode;
   final Uri? checkoutUrl;
@@ -15,6 +16,7 @@ class MedicalPaymentLink {
   MedicalPaymentLink._(Map<String, dynamic> data)
     : orderCode = data['orderCode'] as int,
       amount = data['amount'] as num,
+      paidAmount = data['paidAmount'] as num?,
       status = data['status'] as String,
       qrCode = data['qrCode'] as String?,
       checkoutUrl = Uri.tryParse(data['checkoutUrl'] as String? ?? ''),
@@ -91,21 +93,21 @@ class MedicalPaymentService {
   Future<MedicalPaymentLink> createLink(
     String encounterId,
     String patientId,
-    String orderId,
+    List<String> orderIds,
   ) async {
     _requirePatient(patientId);
     final response = await _api.post<Map<String, dynamic>>(
       '${_visit(encounterId)}/payos/payment-links',
-      body: {'purpose': 'MedicalOrder', 'referenceId': orderId},
+      body: {'purpose': 'Paraclinical', 'orderIds': orderIds},
     );
     _requirePatient(patientId);
-    return _readLink(response.data, encounterId, orderId);
+    return _readLink(response.data, encounterId, orderIds);
   }
 
   Future<MedicalPaymentLink> checkLink(
     String encounterId,
     String patientId,
-    String orderId,
+    List<String> orderIds,
     int orderCode,
   ) async {
     _requirePatient(patientId);
@@ -116,7 +118,7 @@ class MedicalPaymentService {
     return _readLink(
       response.data,
       encounterId,
-      orderId,
+      orderIds,
       expectedCode: orderCode,
     );
   }
@@ -124,13 +126,16 @@ class MedicalPaymentService {
   MedicalPaymentLink _readLink(
     Map<String, dynamic>? data,
     String encounterId,
-    String orderId, {
+    List<String> orderIds, {
     int? expectedCode,
   }) {
+    final returnedIds = data?['orderIds'];
     if (data == null ||
         data['encounterId'] != encounterId ||
-        data['referenceId'] != orderId ||
-        data['purpose'] != 'MedicalOrder' ||
+        data['purpose'] != 'Paraclinical' ||
+        returnedIds is! List ||
+        returnedIds.length != orderIds.length ||
+        !returnedIds.toSet().containsAll(orderIds) ||
         data['orderCode'] is! int ||
         (expectedCode != null && data['orderCode'] != expectedCode) ||
         data['amount'] is! num ||

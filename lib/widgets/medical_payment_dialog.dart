@@ -15,11 +15,17 @@ String formatMedicalPaymentAmount(num amount) => NumberFormat.currency(
   decimalDigits: 0,
 ).format(amount);
 
-Future<bool?> showMedicalPaymentReminder(
+typedef MedicalPaymentResult = ({
+  num? transferredAmount,
+  int? orderCode,
+  bool billChanged,
+});
+
+Future<MedicalPaymentResult?> showMedicalPaymentReminder(
   BuildContext context, {
   required String encounterId,
   required String patientId,
-  required String orderId,
+  required List<String> orderIds,
   required String serviceName,
   required double outstanding,
   MedicalPaymentService? paymentService,
@@ -57,7 +63,7 @@ Future<bool?> showMedicalPaymentReminder(
         content: Text(
           'Quay lại quầy lễ tân và cung cấp mã lượt khám '
           '${encounterId.split('-').first.toUpperCase()} để nhân viên kiểm tra '
-          'và thu phí $serviceName. Sau khi thanh toán, quay lại phòng dịch vụ theo lộ trình.'
+          'và thu tổng $serviceName. Sau khi thanh toán, quay lại phòng dịch vụ theo lộ trình.'
           '\n\nCòn phải trả: ${formatMedicalPaymentAmount(outstanding)}',
         ),
         actions: [
@@ -71,13 +77,13 @@ Future<bool?> showMedicalPaymentReminder(
     return null;
   }
 
-  return showDialog<bool>(
+  return showDialog<MedicalPaymentResult>(
     context: context,
     barrierDismissible: false,
     builder: (_) => _MedicalQrDialog(
       encounterId: encounterId,
       patientId: patientId,
-      orderId: orderId,
+      orderIds: orderIds,
       serviceName: serviceName,
       paymentService: paymentService,
     ),
@@ -87,14 +93,14 @@ Future<bool?> showMedicalPaymentReminder(
 class _MedicalQrDialog extends StatefulWidget {
   final String encounterId;
   final String patientId;
-  final String orderId;
+  final List<String> orderIds;
   final String serviceName;
   final MedicalPaymentService? paymentService;
 
   const _MedicalQrDialog({
     required this.encounterId,
     required this.patientId,
-    required this.orderId,
+    required this.orderIds,
     required this.serviceName,
     this.paymentService,
   });
@@ -103,76 +109,181 @@ class _MedicalQrDialog extends StatefulWidget {
   State<_MedicalQrDialog> createState() => _MedicalQrDialogState();
 }
 
-class _MedicalQrDialogState extends State<_MedicalQrDialog> {
+class _MedicalQrDialogState extends State<_MedicalQrDialog>
+    with WidgetsBindingObserver {
   late final MedicalPaymentService _service;
   MedicalPaymentLink? _link;
   Timer? _expiryTimer;
+  Timer? _pollTimer;
   String? _error;
   bool _busy = false;
+  bool _polling = false;
   bool _settled = false;
   bool _unavailable = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _service = widget.paymentService ?? MedicalPaymentService();
     unawaited(_update());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _expiryTimer?.cancel();
+    _pollTimer?.cancel();
     if (widget.paymentService == null) _service.close();
     super.dispose();
   }
 
-  Future<void> _update({bool check = false}) async {
-    if (_busy || _settled || _unavailable) return;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_pollStatus());
+    }
+  }
+
+  void _completePayment({num? amount, bool billChanged = false}) {
+    if (_settled) return;
+    _expiryTimer?.cancel();
+    _pollTimer?.cancel();
+    _settled = true;
+    if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+      Navigator.of(context).pop<MedicalPaymentResult>((
+        transferredAmount: amount,
+        orderCode: _link?.orderCode,
+        billChanged: billChanged,
+      ));
+    }
+  }
+
+  void _schedulePoll() {
+    _pollTimer?.cancel();
+    final link = _link;
+    if (!mounted ||
+        _settled ||
+        _unavailable ||
+        link == null ||
+        !link.isPayable) {
+      return;
+    }
+    _pollTimer = Timer(const Duration(seconds: 3), () {
+      unawaited(_pollStatus());
+    });
+  }
+
+  Future<void> _pollStatus() async {
+    final current = _link;
+    if (!mounted ||
+        _busy ||
+        _polling ||
+        _settled ||
+        _unavailable ||
+        current == null ||
+        current.status != 'Pending') {
+      return;
+    }
+    _polling = true;
+    try {
+      final next = await _service.checkLink(
+        widget.encounterId,
+        widget.patientId,
+        widget.orderIds,
+        current.orderCode,
+      );
+      if (!mounted || _settled) return;
+      if (next.isPaid) {
+        _link = next;
+        _completePayment(amount: next.paidAmount ?? next.amount);
+        return;
+      }
+      setState(() {
+        _link = next;
+        _error = null;
+      });
+      if (next.isPayable) {
+        _schedulePoll();
+      }
+    } catch (error) {
+      if (!mounted || _settled) return;
+      final codes = error is ApiException ? error.codes : <String>{};
+      if (codes.contains('ALREADY_PAID')) {
+        _completePayment();
+        return;
+      }
+      if (codes.contains('ITEM_NOT_BILLABLE')) {
+        setState(() {
+          _unavailable = true;
+          _error = 'Chỉ định này hiện không có khoản phí để thanh toán.';
+        });
+        return;
+      }
+      if (_link?.isPayable == true) {
+        _schedulePoll();
+      }
+    } finally {
+      _polling = false;
+    }
+  }
+
+  Future<void> _update() async {
+    if (_busy || _polling || _settled || _unavailable) return;
+    _pollTimer?.cancel();
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final link = check
-          ? await _service.checkLink(
-              widget.encounterId,
-              widget.patientId,
-              widget.orderId,
-              _link!.orderCode,
-            )
-          : await _service.createLink(
-              widget.encounterId,
-              widget.patientId,
-              widget.orderId,
-            );
+      final link = await _service.createLink(
+        widget.encounterId,
+        widget.patientId,
+        widget.orderIds,
+      );
       if (!mounted) return;
+      if (link.isPaid) {
+        _link = link;
+        _completePayment(amount: link.paidAmount ?? link.amount);
+        return;
+      }
       setState(() {
         _link = link;
-        _settled = link.isPaid;
+        _settled = false;
       });
       _expiryTimer?.cancel();
       if (link.isPayable) {
         _expiryTimer = Timer(link.expiresAt.difference(DateTime.now()), () {
-          if (mounted) setState(() {});
+          _pollTimer?.cancel();
+          if (mounted) {
+            setState(() {});
+            unawaited(_pollStatus());
+          }
         });
+        _schedulePoll();
       }
     } catch (error) {
       if (!mounted) return;
       final codes = error is ApiException ? error.codes : <String>{};
+      if (codes.contains('ALREADY_PAID')) {
+        _completePayment();
+        return;
+      }
+      if (codes.contains('PAYMENT_CHANGED')) {
+        _completePayment(billChanged: true);
+        return;
+      }
       setState(() {
-        _settled = codes.contains('ALREADY_PAID');
         _unavailable = codes.contains('ITEM_NOT_BILLABLE');
-        if (!_settled) {
-          _error = _unavailable
-              ? 'Chỉ định này hiện không có khoản phí để thanh toán.'
-              : patientErrorMessage(
-                  error,
-                  fallback: 'Chưa xác minh được thanh toán.',
-                );
-        }
+        _error = _unavailable
+            ? 'Chỉ định này hiện không có khoản phí để thanh toán.'
+            : patientErrorMessage(
+                error,
+                fallback: 'Chưa xác minh được thanh toán.',
+              );
       });
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && !_settled) setState(() => _busy = false);
     }
   }
 
@@ -194,8 +305,6 @@ class _MedicalQrDialogState extends State<_MedicalQrDialog> {
         children: [
           Text(widget.serviceName),
           if (_busy) const LinearProgressIndicator(),
-          if (_settled)
-            const Text('Đã xác nhận thanh toán. Hãy tiếp tục theo lộ trình.'),
           if (isPayable && link != null) ...[
             Text(
               'Số tiền thanh toán: ${formatMedicalPaymentAmount(link.amount)}',
@@ -230,7 +339,9 @@ class _MedicalQrDialogState extends State<_MedicalQrDialog> {
                 },
                 child: const Text('Sao chép liên kết PayOS'),
               ),
-            const Text('Sau khi chuyển khoản, bấm Kiểm tra thanh toán.'),
+            const Text(
+              'Hệ thống sẽ tự động xác nhận ngay sau khi bạn chuyển khoản thành công.',
+            ),
           ],
           if (link != null && !isPayable && !_settled && !_unavailable)
             Text(
@@ -249,14 +360,9 @@ class _MedicalQrDialogState extends State<_MedicalQrDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _busy ? null : () => Navigator.pop(context, _settled),
+          onPressed: _busy ? null : () => Navigator.pop(context),
           child: const Text('Đóng'),
         ),
-        if (!_settled && !_unavailable && link != null)
-          OutlinedButton(
-            onPressed: _busy ? null : () => _update(check: true),
-            child: const Text('Kiểm tra thanh toán'),
-          ),
         if (!_settled && !_unavailable && !isPayable)
           FilledButton(
             onPressed: _busy ? null : () => _update(),
