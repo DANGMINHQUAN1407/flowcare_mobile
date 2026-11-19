@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:flowcare_mobile/providers/home_provider.dart';
@@ -19,7 +20,17 @@ import 'fixtures/journey_fixtures.dart';
 
 class _VisitSummaryEncounters extends FakeEncounters {
   final requestedIds = <String>[];
+  final downloadedIds = <String>[];
   Object? visitSummaryError;
+
+  @override
+  Future<DownloadedFile> downloadVisitAttachment(String attachmentId) async {
+    downloadedIds.add(attachmentId);
+    return (
+      bytes: Uint8List.fromList([37, 80, 68, 70]),
+      contentType: 'application/pdf',
+    );
+  }
 
   @override
   Future<List<PatientVisitModel>?> getPatientHistory(String patientId) async =>
@@ -56,6 +67,9 @@ class _VisitSummaryEncounters extends FakeEncounters {
           'result': 'Kết quả CLS đã chốt',
           'resultNotes': 'Ghi chú xét nghiệm đã lưu',
           'resultFinalizedAt': '2026-10-01T06:30:00Z',
+          'attachments': [
+            {'id': 'result-file', 'fileName': 'phieu-ket-qua.pdf'},
+          ],
         },
       ],
     });
@@ -87,68 +101,78 @@ class _NoFasterRoute extends RouteOptimizationService {
 }
 
 void main() {
-  testWidgets(
-    'Two pending orders can request optimization before any offer exists',
-    (tester) async {
-      final session = PatientSessionService()
-        ..bindPatient(patientId: 'patient', userName: 'patient.test');
-      ApiClient.setAuthToken('test-token');
-      addTearDown(session.clearSession);
-      addTearDown(() => ApiClient.setAuthToken(null));
-      final optimization = _NoFasterRoute();
-      addTearDown(optimization.close);
-      final plan = activeTimedPlanJson()..['encounterId'] = 'patient';
-      final steps = (plan['steps'] as List).cast<Map<String, dynamic>>();
-      steps[0]['medicalOrderId'] = 'order-xray';
-      steps[1]['medicalOrderId'] = 'order-lab';
-      final home = fakeHome(
-        encounters: FakeEncounters()
-          ..summary = summaryFixture(status: 'InQueue', queueStatus: 'Done')
-          ..plan = ParaclinicalPlanModel.fromJson(plan),
-      );
-      addTearDown(home.dispose);
-      await home.loadHomeData();
-      await tester.pumpWidget(
-        ChangeNotifierProvider<HomeProvider>.value(
-          value: home,
-          child: MaterialApp(
-            home: RouteScreen(optimizationService: optimization),
+  for (final status in ['Active', 'Proposed']) {
+    testWidgets(
+      '$status route with two pending orders can request optimization before any offer exists',
+      (tester) async {
+        final session = PatientSessionService()
+          ..bindPatient(patientId: 'patient', userName: 'patient.test');
+        ApiClient.setAuthToken('test-token');
+        addTearDown(session.clearSession);
+        addTearDown(() => ApiClient.setAuthToken(null));
+        final optimization = _NoFasterRoute();
+        addTearDown(optimization.close);
+        final plan = activeTimedPlanJson()
+          ..['encounterId'] = 'patient'
+          ..['status'] = status
+          ..['isLocked'] = status == 'Proposed';
+        final steps = (plan['steps'] as List).cast<Map<String, dynamic>>();
+        steps[0]['medicalOrderId'] = 'order-xray';
+        steps[1]['medicalOrderId'] = 'order-lab';
+        final home = fakeHome(
+          encounters: FakeEncounters()
+            ..summary = summaryFixture(status: 'InQueue', queueStatus: 'Done')
+            ..plan = ParaclinicalPlanModel.fromJson(plan),
+        );
+        addTearDown(home.dispose);
+        await home.loadHomeData();
+        await tester.pumpWidget(
+          ChangeNotifierProvider<HomeProvider>.value(
+            value: home,
+            child: MaterialApp(
+              home: RouteScreen(optimizationService: optimization),
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      final notice = find.text(
-        'Đã tính lại theo hàng đợi hiện tại. Chưa có phương án đáp ứng ràng buộc của bác sĩ và mức tiết kiệm yêu cầu. Bạn tiếp tục theo lộ trình hiện tại.',
-      );
-      final optimize = find.text('Tối ưu lộ trình');
-      await tester.scrollUntilVisible(optimize.hitTestable(), 120);
-      expect(
-        tester
-            .widget<FilledButton>(
-              find.ancestor(of: optimize, matching: find.byType(FilledButton)),
-            )
-            .onPressed,
-        isNotNull,
-      );
-      expect(notice, findsNothing);
-      expect(
-        find.text(
-          'Bấm Tối ưu lộ trình để kiểm tra phương án theo hàng đợi hiện tại.',
-        ),
-        findsOneWidget,
-      );
-      expect(optimization.requests, 0);
-      await tester.tap(optimize);
-      await tester.pumpAndSettle();
-      expect(optimization.requests, 1);
-      await tester.scrollUntilVisible(notice, 120);
-      expect(notice, findsOneWidget);
-      expect(find.text('Hỗ trợ tối ưu lộ trình'), findsNothing);
-      expect(find.text('Chấp nhận đề xuất'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
+        final notice = find.text(
+          status == 'Proposed'
+              ? 'Chưa có phương án tiết kiệm thời gian hơn. Phương án hiện tại vẫn đang chờ bác sĩ duyệt.'
+              : 'Đã tính lại theo hàng đợi hiện tại. Chưa có phương án đáp ứng ràng buộc của bác sĩ và mức tiết kiệm yêu cầu. Bạn tiếp tục theo lộ trình hiện tại.',
+        );
+        final optimize = find.text('Tối ưu lộ trình');
+        await tester.scrollUntilVisible(optimize.hitTestable(), 120);
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.ancestor(
+                  of: optimize,
+                  matching: find.byType(FilledButton),
+                ),
+              )
+              .onPressed,
+          isNotNull,
+        );
+        expect(notice, findsNothing);
+        expect(
+          find.text(
+            'Bấm Tối ưu lộ trình để kiểm tra phương án theo hàng đợi hiện tại.',
+          ),
+          findsOneWidget,
+        );
+        expect(optimization.requests, 0);
+        await tester.tap(optimize);
+        await tester.pumpAndSettle();
+        expect(optimization.requests, 1);
+        await tester.scrollUntilVisible(notice, 120);
+        expect(notice, findsOneWidget);
+        expect(find.text('Hỗ trợ tối ưu lộ trình'), findsNothing);
+        expect(find.text('Chấp nhận đề xuất'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'Finalized visit shows real services without stale queue or invented room on a small screen',
@@ -261,11 +285,35 @@ void main() {
         tester.getTopLeft(results).dy,
         greaterThan(tester.getTopLeft(find.text('Đơn thuốc đã kê')).dy),
       );
+      const fileSaver = MethodChannel('flowcare/result_files');
+      MethodCall? savedFile;
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(fileSaver, (call) async {
+        savedFile = call;
+        return true;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(fileSaver, null));
+
+      final download = find.text('Tải tệp kết quả');
       await tester.scrollUntilVisible(
-        find.text('Kết quả CLS đã chốt'),
+        download.hitTestable(),
         100,
         scrollable: find.byType(Scrollable).first,
       );
+      expect(find.text('Kết quả CLS đã chốt'), findsNothing);
+      await tester.tap(download);
+      await tester.pumpAndSettle();
+      expect(encounters.downloadedIds, ['result-file']);
+      expect(savedFile?.method, 'save');
+      expect(savedFile?.arguments['fileName'], 'phieu-ket-qua.pdf');
+      expect(savedFile?.arguments['bytes'], [37, 80, 68, 70]);
+
+      final showResult = find.text('Xem nội dung');
+      await tester.ensureVisible(showResult);
+      await tester.tap(showResult);
+      await tester.pumpAndSettle();
+      expect(find.text('Kết quả CLS đã chốt'), findsOneWidget);
       expect(find.text('Ghi chú: Ghi chú xét nghiệm đã lưu'), findsOneWidget);
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();

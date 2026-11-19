@@ -92,6 +92,12 @@ class EncounterService {
     return summary;
   }
 
+  Future<DownloadedFile> downloadVisitAttachment(String attachmentId) =>
+      _apiClient.download(
+        '/attachments/${Uri.encodeComponent(attachmentId)}/download',
+        queryParameters: const {'inline': false},
+      );
+
   Future<List<Map<String, dynamic>>> getNotifications(
     String encounterId,
   ) async {

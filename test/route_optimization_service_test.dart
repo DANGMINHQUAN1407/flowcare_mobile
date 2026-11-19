@@ -116,6 +116,38 @@ void main() {
   });
 
   test(
+    'accepting an offer can return the selection still waiting for approval',
+    () async {
+      final service = RouteOptimizationService(
+        apiClient: ApiClient(
+          baseUrl: 'http://test/api/v1',
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                'success': true,
+                'data': {
+                  'id': 'proposal',
+                  'encounterId': 'visit',
+                  'status': 'Proposed',
+                  'offer': {'status': 'Accepted', 'savedMinutes': 12},
+                  'steps': [],
+                },
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            ),
+          ),
+        ),
+      );
+      addTearDown(service.close);
+
+      final selected = await service.accept('visit', 'patient', 'proposal');
+      expect(selected.isProposed, isTrue);
+      expect(selected.acceptedOfferSavedMinutes, 12);
+    },
+  );
+
+  test(
     'decline posts the viewed ID and stops if a replacement is read',
     () async {
       final calls = <http.Request>[];

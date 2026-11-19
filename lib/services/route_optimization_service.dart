@@ -68,14 +68,16 @@ class RouteOptimizationService {
       fromJsonT: (json) =>
           ParaclinicalPlanModel.fromJson(json as Map<String, dynamic>),
     );
-    if (session != PatientSessionService().version)
+    if (session != PatientSessionService().version) {
       throw SessionChangedException();
+    }
     _checkPatient(patientId);
     final plan = response.data;
     if (plan == null ||
         plan.id != proposedPlanId ||
         plan.encounterId != encounterId ||
-        plan.status != 'Active') {
+        (plan.status != 'Active' &&
+            !(plan.isProposed && plan.acceptedOfferSavedMinutes != null))) {
       throw ApiException('Chưa xác nhận được lộ trình đã áp dụng.');
     }
     return plan;
@@ -89,8 +91,9 @@ class RouteOptimizationService {
   ) async {
     final session = PatientSessionService().version;
     final latest = await eligibility(encounterId, patientId);
-    if (session != PatientSessionService().version)
+    if (session != PatientSessionService().version) {
       throw SessionChangedException();
+    }
     if (!latest.canOptimize ||
         latest.proposedPlanId != proposedPlanId ||
         latest.offer?.id != proposedPlanId ||

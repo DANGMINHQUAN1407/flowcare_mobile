@@ -2,6 +2,7 @@ import 'dart:async' hide TimeoutException;
 import 'dart:convert';
 
 import '../core/network/api_exceptions.dart';
+import '../core/network/api_client.dart';
 
 import 'package:flutter/foundation.dart';
 
@@ -136,6 +137,16 @@ class HomeProvider extends ChangeNotifier {
     final summary = await _encounterService.getVisitSummary(encounterId);
     if (!_canViewVisitSummary(encounterId)) throw SessionChangedException();
     return summary;
+  }
+
+  Future<DownloadedFile> downloadVisitAttachment(
+    String encounterId,
+    String attachmentId,
+  ) async {
+    if (!_canViewVisitSummary(encounterId)) throw SessionChangedException();
+    final file = await _encounterService.downloadVisitAttachment(attachmentId);
+    if (!_canViewVisitSummary(encounterId)) throw SessionChangedException();
+    return file;
   }
 
   bool _canViewVisitSummary(String encounterId) =>

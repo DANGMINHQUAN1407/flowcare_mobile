@@ -1,5 +1,10 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../core/network/api_client.dart';
 import '../core/network/api_exceptions.dart';
 import '../core/utils/hospital_time.dart';
 import '../models/visit_summary_model.dart';
@@ -8,12 +13,15 @@ class VisitSummaryCard extends StatefulWidget {
   final String encounterId;
   final Object? refreshToken;
   final Future<VisitSummaryModel> Function(String encounterId) load;
+  final Future<DownloadedFile> Function(String encounterId, String attachmentId)
+  download;
 
   const VisitSummaryCard({
     super.key,
     required this.encounterId,
     required this.refreshToken,
     required this.load,
+    required this.download,
   });
 
   @override
@@ -21,7 +29,9 @@ class VisitSummaryCard extends StatefulWidget {
 }
 
 class _VisitSummaryCardState extends State<VisitSummaryCard> {
+  static const _fileSaver = MethodChannel('flowcare/result_files');
   late Future<VisitSummaryModel> _summary;
+  bool _savingFile = false;
 
   @override
   void initState() {
@@ -44,6 +54,93 @@ class _VisitSummaryCardState extends State<VisitSummaryCard> {
     });
   }
 
+  Future<void> _saveResult(VisitServiceResult item) async {
+    if (_savingFile) return;
+    setState(() => _savingFile = true);
+    final encounterId = widget.encounterId;
+    final session = ApiClient.sessionVersion;
+    try {
+      final files = item.attachments;
+      final attachment = files.length > 1
+          ? await showDialog<VisitResultAttachment>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Chọn tệp kết quả'),
+                scrollable: true,
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final file in files)
+                      ListTile(
+                        title: Text(file.fileName),
+                        leading: const Icon(Icons.description_outlined),
+                        onTap: () => Navigator.pop(context, file),
+                      ),
+                  ],
+                ),
+              ),
+            )
+          : files.firstOrNull;
+      if (files.isNotEmpty && attachment == null) return;
+      if (!mounted ||
+          encounterId != widget.encounterId ||
+          session != ApiClient.sessionVersion) {
+        return;
+      }
+
+      final DownloadedFile file;
+      final String fileName;
+      if (attachment != null) {
+        file = await widget.download(encounterId, attachment.id);
+        fileName = attachment.fileName;
+      } else {
+        final text = [
+          item.serviceName,
+          if (item.resultFinalizedAt case final date?)
+            'Đã chốt ${hospitalTime(date)}',
+          '',
+          item.result!.trim(),
+          if (item.resultNotes?.trim() case final notes? when notes.isNotEmpty)
+            '\nGhi chú: $notes',
+        ].join('\n');
+        file = (
+          bytes: Uint8List.fromList(utf8.encode(text)),
+          contentType: 'text/plain',
+        );
+        fileName = '${item.serviceName}.txt';
+      }
+      if (!mounted ||
+          encounterId != widget.encounterId ||
+          session != ApiClient.sessionVersion) {
+        return;
+      }
+      final safeName = fileName
+          .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_')
+          .trim();
+      final saved = await _fileSaver.invokeMethod<bool>('save', {
+        'fileName': safeName.isEmpty ? 'ket-qua' : safeName,
+        'contentType': file.contentType,
+        'bytes': file.bytes,
+      });
+      if (mounted && saved == true) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Đã lưu tệp kết quả.')));
+      }
+    } on SessionChangedException {
+      // The account or visit changed before saving.
+    } on Exception {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Chưa lưu được tệp kết quả. Vui lòng thử lại.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingFile = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<VisitSummaryModel>(
     future: _summary,
@@ -54,7 +151,15 @@ class _VisitSummaryCardState extends State<VisitSummaryCard> {
         );
       }
       final summary = snapshot.data;
-      if (summary != null) return _VisitSummaryDetails(summary);
+      if (summary != null) {
+        return _VisitSummaryDetails(
+          summary,
+          onDownload: defaultTargetPlatform == TargetPlatform.android
+              ? _saveResult
+              : null,
+          savingFile: _savingFile,
+        );
+      }
 
       final error = snapshot.error;
       final waitingForDoctor =
@@ -80,8 +185,14 @@ class _VisitSummaryCardState extends State<VisitSummaryCard> {
 
 class _VisitSummaryDetails extends StatelessWidget {
   final VisitSummaryModel summary;
+  final ValueChanged<VisitServiceResult>? onDownload;
+  final bool savingFile;
 
-  const _VisitSummaryDetails(this.summary);
+  const _VisitSummaryDetails(
+    this.summary, {
+    required this.onDownload,
+    required this.savingFile,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -136,19 +247,43 @@ class _VisitSummaryDetails extends StatelessWidget {
               if (item.resultFinalizedAt case final finalizedAt?)
                 Text('Đã chốt ${hospitalTime(finalizedAt)}'),
               const SizedBox(height: 4),
-              if (item.result?.trim() case final result? when result.isNotEmpty)
-                SelectableText(result)
-              else
+              if (item.attachments.isEmpty &&
+                  item.result?.trim().isNotEmpty != true)
                 Text(
                   item.status.toLowerCase() == 'cancelled'
                       ? 'Dịch vụ đã hủy.'
                       : 'Chưa có kết quả đã chốt.',
                 ),
-              if (item.resultNotes?.trim() case final notes?
-                  when notes.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text('Ghi chú: $notes'),
+              if (onDownload != null &&
+                  (item.attachments.isNotEmpty ||
+                      item.result?.trim().isNotEmpty == true))
+                OutlinedButton.icon(
+                  onPressed: savingFile ? null : () => onDownload!(item),
+                  icon: const Icon(Icons.file_download_outlined),
+                  label: Text(
+                    item.attachments.isNotEmpty
+                        ? 'Tải tệp kết quả'
+                        : 'Tải kết quả (.txt)',
+                  ),
+                ),
+              if (item.result?.trim().isNotEmpty == true ||
+                  item.resultNotes?.trim().isNotEmpty == true)
+                ExpansionTile(
+                  dense: true,
+                  tilePadding: EdgeInsets.zero,
+                  expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                  title: const Text('Xem nội dung'),
+                  children: [
+                    if (item.result?.trim() case final result?
+                        when result.isNotEmpty)
+                      SelectableText(result),
+                    if (item.resultNotes?.trim() case final notes?
+                        when notes.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text('Ghi chú: $notes'),
+                      ),
+                  ],
                 ),
             ],
           ],

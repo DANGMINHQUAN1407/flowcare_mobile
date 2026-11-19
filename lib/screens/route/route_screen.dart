@@ -209,6 +209,16 @@ class _RouteScreenState extends State<RouteScreen> {
       final journey = home.journey;
       final paymentJourney = _paymentJourney(home);
       final orders = _plannedOrders(paymentJourney);
+      final optimizationPlan = journey?.plan?.pendingProposal ?? journey?.plan;
+      final proposal = optimizationPlan?.isProposed == true
+          ? optimizationPlan
+          : null;
+      final canReviewOffer = proposal == null
+          ? orders.length >= 2
+          : proposal.steps
+                    .where((step) => step.medicalOrderId != null)
+                    .length >=
+                2;
       final encounterId = journey?.summary.encounterId;
       final session = PatientSessionService().version;
       final needsReview = _needsReview(paymentJourney, orders);
@@ -293,12 +303,12 @@ class _RouteScreenState extends State<RouteScreen> {
                       ),
                       encounterId: home.encounterSummary!.encounterId,
                       patientId: home.patientId!,
-                      currentPlan: journey.plan,
+                      currentPlan: optimizationPlan,
                       isStale: home.isJourneyStale,
-                      allowOptimization: orders.length >= 2,
+                      allowOptimization: canReviewOffer,
                       refreshToken: home.lastUpdatedAt,
                       service: widget.optimizationService,
-                      onRouteReviewed: orders.length < 2
+                      onRouteReviewed: proposal != null || orders.length < 2
                           ? null
                           : (planId) {
                               if (mounted &&
@@ -628,11 +638,15 @@ class _RouteScreenState extends State<RouteScreen> {
         ? 'Đã hoàn tất lượt khám'
         : emergency
         ? 'Lượt khám ưu tiên cấp cứu'
+        : journey.plan?.isProposed == true
+        ? 'Lộ trình chờ bác sĩ duyệt'
         : current?.statusLabel ?? 'Đang chờ cập nhật tiến trình';
     final instruction = finalized
         ? 'Bạn có thể xem lại các bước và phòng đã thực hiện bên dưới.'
         : emergency
         ? 'Vui lòng làm theo hướng dẫn trực tiếp của nhân viên y tế.'
+        : journey.plan?.isProposed == true
+        ? 'Xem các dịch vụ dự kiến. Bạn sẽ nhận hướng dẫn đến phòng sau khi bác sĩ duyệt.'
         : current?.title ?? 'Nhân viên y tế sẽ hướng dẫn bước tiếp theo.';
     return Container(
       key: const ValueKey('journey-status-banner'),
