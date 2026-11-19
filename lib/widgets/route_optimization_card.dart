@@ -60,8 +60,9 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
   bool get _canLoad =>
       _current && _allowed && !_loading && !_sending && !widget.isStale;
   bool get _routeLocked =>
-      widget.currentPlan?.isLocked == true ||
-      _eligibility?.reason == 'ROUTE_LOCKED';
+      widget.currentPlan?.isProposed != true &&
+      (widget.currentPlan?.isLocked == true ||
+          _eligibility?.reason == 'ROUTE_LOCKED');
   bool get _routeAccepted =>
       _appliedPlan?.acceptedOfferSavedMinutes != null ||
       widget.currentPlan?.acceptedOfferSavedMinutes != null ||
@@ -92,7 +93,10 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
       _previousPlan = previous;
       if (_appliedPlan?.id != current.id) {
         _appliedPlan = current;
-        _notice = 'Lộ trình đã thay đổi. Hãy xem lại dịch vụ và phòng được phân công.';
+        _notice =
+            current.isProposed && current.acceptedOfferSavedMinutes != null
+            ? 'Phương án bạn chọn đang chờ bác sĩ duyệt và khóa.'
+            : 'Lộ trình đã thay đổi. Hãy xem lại dịch vụ và phòng được phân công.';
       }
     }
     if (oldWidget.refreshToken != widget.refreshToken ||
@@ -144,7 +148,9 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
         if (previous?.proposedPlanId != null &&
             previous!.proposedPlanId != data.proposedPlanId) {
           if (previous.proposedPlanId == data.activePlanId) {
-            _notice = 'Lộ trình tối ưu đã được áp dụng.';
+            _notice = widget.currentPlan?.isProposed == true
+                ? 'Phương án bạn chọn đang chờ bác sĩ duyệt và khóa.'
+                : 'Lộ trình tối ưu đã được áp dụng.';
           } else if (_expired(previous)) {
             _notice = 'Đề xuất tối ưu đã hết hạn.';
           } else {
@@ -187,8 +193,10 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Bạn có chấp nhận lộ trình đề xuất không?'),
-        content: const Text(
-          'Sau khi xác nhận, app sẽ áp dụng thứ tự mới và dừng tối ưu cho lộ trình này. Bác sĩ có thể khóa lộ trình trên màn hình của mình.',
+        content: Text(
+          widget.currentPlan?.isProposed == true
+              ? 'Phương án bạn chọn sẽ được gửi cho bác sĩ để duyệt và khóa lộ trình.'
+              : 'Sau khi xác nhận, app sẽ áp dụng thứ tự mới và dừng tối ưu cho lộ trình này. Bác sĩ có thể khóa lộ trình trên màn hình của mình.',
         ),
         actions: [
           TextButton(
@@ -265,7 +273,9 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
           _eligibility = null;
           _appliedPlan = plan;
           _previousPlan = previousPlan;
-          _notice = 'Đã áp dụng lộ trình tối ưu.';
+          _notice = plan.isProposed
+              ? 'Đã gửi phương án bạn chọn. Chờ bác sĩ duyệt và khóa lộ trình.'
+              : 'Đã áp dụng lộ trình tối ưu.';
         });
         refresh = false;
         widget.onRouteReviewed?.call(plan.id);
@@ -342,14 +352,16 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
     final reviewing = validOffer && _reviewedOfferId == data?.proposedPlanId;
     final enabled = _canRespond && _error == null && reviewing && !expired;
     final reviewedOffer = reviewing && !expired ? data : null;
-    final currentPlan = widget.onRouteReviewed == null
-        ? null
-        : widget.currentPlan;
+    final beforeApproval = widget.currentPlan?.isProposed == true;
+    final currentPlan = beforeApproval || widget.onRouteReviewed != null
+        ? widget.currentPlan
+        : null;
     final appliedPlan = _appliedPlan ?? widget.currentPlan;
     final canRequest =
         widget.requestedOfferId == null &&
-        widget.onRouteReviewed != null &&
-        widget.currentPlan?.status.toLowerCase() == 'active' &&
+        (beforeApproval ||
+            (widget.onRouteReviewed != null &&
+                widget.currentPlan?.status.toLowerCase() == 'active')) &&
         widget.allowOptimization &&
         !_routeLocked &&
         !_routeAccepted &&
@@ -368,6 +380,7 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
               widget.requestedOfferId != null =>
         'Đề xuất trong thông báo đã được áp dụng.',
       _ when widget.requestedOfferId != null => 'Đề xuất trong thông báo đã hết hiệu lực. Mở tab Lộ trình để xem cập nhật mới nhất.',
+      _ when checkedWithoutOffer && beforeApproval => 'Chưa có phương án tiết kiệm thời gian hơn. Phương án hiện tại vẫn đang chờ bác sĩ duyệt.',
       _ when checkedWithoutOffer => 'Đã tính lại theo hàng đợi hiện tại. Chưa có phương án đáp ứng ràng buộc của bác sĩ và mức tiết kiệm yêu cầu. Bạn tiếp tục theo lộ trình hiện tại.',
       _ when canRequest =>
         'Bấm Tối ưu lộ trình để kiểm tra phương án theo hàng đợi hiện tại.',
@@ -406,8 +419,10 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
             if (_routeLocked)
               const Text('Lộ trình đã được bác sĩ khóa.')
             else if (_routeAccepted)
-              const Text(
-                'Bạn đã chấp nhận lộ trình. Bác sĩ có thể khóa lộ trình này.',
+              Text(
+                appliedPlan?.isProposed == true
+                    ? 'Bạn đã chấp nhận phương án này. Chờ bác sĩ duyệt và khóa lộ trình.'
+                    : 'Bạn đã chấp nhận lộ trình. Bác sĩ có thể khóa lộ trình này.',
               )
             else if (expired)
               const Text('Đề xuất tối ưu đã hết hạn.'),
@@ -431,7 +446,9 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
               const SizedBox(height: 8),
               _RouteStepsSection(
                 key: ValueKey('current-route-${currentPlan.id}'),
-                title: 'Lộ trình hiện tại',
+                title: currentPlan.isProposed
+                    ? 'Lộ trình chờ duyệt'
+                    : 'Lộ trình hiện tại',
                 plan: currentPlan,
                 totalMinutes: reviewedOffer?.currentTotalMinutes?.toDouble(),
               ),
@@ -448,9 +465,9 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
               FilledButton(
                 onPressed: _canRespond ? () => _load(review: true) : null,
                 child: Text(
-                  widget.onRouteReviewed == null
-                      ? 'Nhờ tối ưu lộ trình'
-                      : 'Tối ưu lộ trình',
+                  beforeApproval || widget.onRouteReviewed != null
+                      ? 'Tối ưu lộ trình'
+                      : 'Nhờ tối ưu lộ trình',
                 ),
               ),
             if (reviewedOffer != null) ...[
@@ -473,7 +490,11 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
               ),
             ],
             if (appliedPlan?.acceptedOfferSavedMinutes case final minutes?)
-              Text('Lộ trình đã áp dụng · Dự kiến tiết kiệm $minutes phút.'),
+              Text(
+                appliedPlan?.isProposed == true
+                    ? 'Phương án đã chọn · Dự kiến tiết kiệm $minutes phút.'
+                    : 'Lộ trình đã áp dụng · Dự kiến tiết kiệm $minutes phút.',
+              ),
             if (_appliedPlan case final plan?) ...[
               if (_previousPlan case final previous?
                   when previous.id != plan.id) ...[
@@ -484,12 +505,13 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
                   plan: previous,
                 ),
               ],
-              if (widget.onRouteReviewed == null ||
-                  widget.currentPlan?.id != plan.id) ...[
+              if (currentPlan?.id != plan.id) ...[
                 const SizedBox(height: 8),
                 _RouteStepsSection(
                   key: ValueKey('applied-route-${plan.id}'),
-                  title: 'Lộ trình đã áp dụng',
+                  title: plan.isProposed
+                      ? 'Phương án đã chọn'
+                      : 'Lộ trình đã áp dụng',
                   plan: plan,
                 ),
               ],

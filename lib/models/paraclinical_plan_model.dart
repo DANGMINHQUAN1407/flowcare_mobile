@@ -10,6 +10,7 @@ class ParaclinicalPlanModel {
   final List<ParaclinicalStepModel> steps;
   final double? estimatedTotalMinutes;
   final DateTime? createdAt;
+  final ParaclinicalPlanModel? pendingProposal;
 
   const ParaclinicalPlanModel({
     required this.id,
@@ -23,6 +24,7 @@ class ParaclinicalPlanModel {
     required this.steps,
     this.estimatedTotalMinutes,
     this.createdAt,
+    this.pendingProposal,
   });
 
   bool get isProposed => status.toLowerCase() == 'proposed';
@@ -51,6 +53,13 @@ class ParaclinicalPlanModel {
       nextAfterPlan: json['nextAfterPlan']?.toString() ?? '',
       estimatedTotalMinutes: readMinutes(json['estimatedTotalMinutes']),
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      pendingProposal: switch (json['pendingProposal']) {
+        final Map<String, dynamic> draft
+            when draft['status'] == 'Proposed' &&
+                draft['encounterId'] == json['encounterId'] =>
+          ParaclinicalPlanModel.fromJson(draft),
+        _ => null,
+      },
       steps: List.unmodifiable(steps),
     );
   }

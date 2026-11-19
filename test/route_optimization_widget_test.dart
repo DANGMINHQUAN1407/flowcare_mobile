@@ -184,6 +184,68 @@ void main() {
     expect(find.text('Đã từ chối đề xuất.'), findsOneWidget);
   });
   testWidgets(
+    'a patient can choose an optimized draft and then waits for the doctor to lock it',
+    (tester) async {
+      final fake = FakeOptimization()..activePlanId = 'original';
+      addTearDown(fake.close);
+      var updates = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RouteOptimizationCard(
+              encounterId: 'visit',
+              patientId: 'patient',
+              service: fake,
+              currentPlan: const ParaclinicalPlanModel(
+                id: 'original',
+                encounterId: 'visit',
+                status: 'Proposed',
+                source: 'MedicalOrders',
+                isLocked: true,
+                nextAfterPlan: '',
+                steps: [],
+              ),
+              onChanged: () async {
+                updates++;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Lộ trình chờ duyệt'), findsOneWidget);
+      await tester.tap(find.text('Tối ưu lộ trình'));
+      await tester.pumpAndSettle();
+      expect(fake.requests, 1);
+      expect(find.text('Lộ trình đề xuất'), findsOneWidget);
+      await tester.tap(find.text('Chấp nhận đề xuất'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Xác nhận chấp nhận'));
+      await tester.pump();
+      expect(fake.calls, 1);
+      fake.complete.complete(
+        const ParaclinicalPlanModel(
+          id: 'proposal',
+          encounterId: 'visit',
+          status: 'Proposed',
+          source: 'MedicalOrders',
+          acceptedOfferSavedMinutes: 12,
+          nextAfterPlan: '',
+          steps: [],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(updates, 1);
+      expect(find.text('Phương án đã chọn'), findsOneWidget);
+      expect(
+        find.textContaining('Chờ bác sĩ duyệt và khóa lộ trình.'),
+        findsWidgets,
+      );
+      expect(find.text('Lộ trình đã áp dụng'), findsNothing);
+      expect(find.text('Tối ưu lộ trình'), findsNothing);
+    },
+  );
+  testWidgets(
     'patient confirms the optimized route and cannot optimize it again',
     (tester) async {
       final fake = FakeOptimization();
