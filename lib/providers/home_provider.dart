@@ -17,6 +17,8 @@ import '../models/visit_summary_model.dart';
 import '../services/appointment_service.dart';
 import '../services/encounter_service.dart';
 import '../services/follow_up_service.dart';
+import '../services/local_reminder_service.dart';
+import '../services/notification_service.dart';
 import '../services/patient_realtime_service.dart';
 import '../services/patient_service.dart';
 import '../services/patient_session_service.dart';
@@ -46,6 +48,8 @@ class HomeProvider extends ChangeNotifier {
   final PatientSessionService _sessionService;
   final FollowUpService _followUpService;
   final PatientRealtimeService _realtimeService;
+  final NotificationService _notificationService;
+  final LocalReminderService _localReminderService;
 
   HomeProvider({
     PatientService? patientService,
@@ -55,6 +59,8 @@ class HomeProvider extends ChangeNotifier {
     PatientSessionService? sessionService,
     FollowUpService? followUpService,
     PatientRealtimeService? realtimeService,
+    NotificationService? notificationService,
+    LocalReminderService? localReminderService,
     bool loadOnCreate = true,
   }) : _patientService = patientService ?? PatientService(),
        _appointmentService = appointmentService ?? AppointmentService(),
@@ -62,7 +68,9 @@ class HomeProvider extends ChangeNotifier {
        _queueService = queueService ?? QueueService(),
        _sessionService = sessionService ?? PatientSessionService(),
        _followUpService = followUpService ?? FollowUpService(),
-       _realtimeService = realtimeService ?? PatientRealtimeService() {
+       _realtimeService = realtimeService ?? PatientRealtimeService(),
+       _notificationService = notificationService ?? NotificationService(),
+       _localReminderService = localReminderService ?? LocalReminderService() {
     _boundSessionVersion = _sessionService.version;
     if (loadOnCreate) unawaited(loadHomeData());
   }
@@ -249,6 +257,7 @@ class HomeProvider extends ChangeNotifier {
         return;
       }
       await _readJourney(selectedId, version, initialSummary: selectedSummary);
+      unawaited(scheduleLocalDeviceReminders());
     } catch (error) {
       if (_isCurrent(version)) {
         _errorMessage = patientErrorMessage(error);
@@ -262,6 +271,35 @@ class HomeProvider extends ChangeNotifier {
         _ensureRealtime();
       }
     }
+  }
+
+  Future<void> scheduleLocalDeviceReminders() async {
+    try {
+      if (_latestFollowUpOrder != null) {
+        await _localReminderService.scheduleFollowUpReminders(_latestFollowUpOrder!);
+      }
+      if (_appointmentCheck?.appointment != null) {
+        await _localReminderService.scheduleAppointmentReminders(_appointmentCheck!.appointment!);
+      }
+    } catch (e) {
+      debugPrint('Error scheduling local reminders: $e');
+    }
+  }
+
+  Future<bool> runBackendRemindersCheck() async {
+    return await _notificationService.runRemindersCheck();
+  }
+
+  Future<bool> markServerNotificationAsRead(String notificationId) async {
+    final success = await _notificationService.markAsRead(notificationId);
+    if (success) {
+      final index = _notices.indexWhere((n) => n.key.contains(notificationId));
+      if (index >= 0) {
+        _notices[index].isRead = true;
+        _notify();
+      }
+    }
+    return success;
   }
 
   Future<void> _readJourney(
