@@ -39,6 +39,7 @@ class VisitServiceResult {
   final String? result;
   final String? resultNotes;
   final DateTime? resultFinalizedAt;
+  final List<VisitResultAttachment> attachments;
 
   const VisitServiceResult({
     required this.serviceName,
@@ -46,6 +47,7 @@ class VisitServiceResult {
     this.result,
     this.resultNotes,
     this.resultFinalizedAt,
+    this.attachments = const [],
   });
 
   factory VisitServiceResult.fromJson(Map<String, dynamic> json) =>
@@ -57,7 +59,24 @@ class VisitServiceResult {
         resultFinalizedAt: DateTime.tryParse(
           json['resultFinalizedAt']?.toString() ?? '',
         ),
+        attachments: (json['attachments'] as List? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .where((file) => file['id'] is String && file['fileName'] is String)
+            .map(
+              (file) => VisitResultAttachment(
+                id: file['id'] as String,
+                fileName: file['fileName'] as String,
+              ),
+            )
+            .toList(),
       );
+}
+
+class VisitResultAttachment {
+  final String id;
+  final String fileName;
+
+  const VisitResultAttachment({required this.id, required this.fileName});
 }
 
 class VisitPrescriptionItem {

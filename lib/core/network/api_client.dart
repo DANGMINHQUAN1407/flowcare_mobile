@@ -1,6 +1,7 @@
 import 'dart:async' as async;
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -8,6 +9,8 @@ import '../constants/api_endpoints.dart';
 import '../constants/app_constants.dart';
 import 'api_exceptions.dart';
 import 'base_response.dart';
+
+typedef DownloadedFile = ({Uint8List bytes, String contentType});
 
 class ApiClient {
   final String baseUrl;
@@ -75,6 +78,33 @@ class ApiClient {
     requiresAuth: requiresAuth,
   );
 
+  Future<DownloadedFile> download(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final result = await _send<DownloadedFile>(
+      'GET',
+      path,
+      queryParameters: queryParameters,
+      headers: const {'Accept': '*/*'},
+      requiresAuth: true,
+      decodeSuccess: (response) {
+        final contentType =
+            response.headers['content-type']?.split(';').first ??
+            'application/octet-stream';
+        if (response.bodyBytes.isEmpty ||
+            const {'application/json', 'text/html'}.contains(contentType)) {
+          throw ApiException('Máy chủ chưa trả về tệp kết quả hợp lệ.');
+        }
+        return BaseResponse(
+          success: true,
+          data: (bytes: response.bodyBytes, contentType: contentType),
+        );
+      },
+    );
+    return result.data!;
+  }
+
   Future<BaseResponse<T>> post<T>(
     String path, {
     dynamic body,
@@ -133,6 +163,7 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Map<String, String>? headers,
     T Function(dynamic json)? fromJsonT,
+    BaseResponse<T> Function(http.Response response)? decodeSuccess,
     required bool requiresAuth,
   }) async {
     final version = _sessionVersion;
@@ -162,6 +193,11 @@ class ApiClient {
         setAuthToken(null);
         onUnauthorized?.call();
         throw UnauthorizedException();
+      }
+      if (decodeSuccess != null &&
+          response.statusCode >= 200 &&
+          response.statusCode < 300) {
+        return decodeSuccess(response);
       }
       return _handleResponse<T>(response, fromJsonT);
     } on SocketException {

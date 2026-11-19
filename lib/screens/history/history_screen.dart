@@ -70,6 +70,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 encounterId: latest.encounterId,
                 refreshToken: finalized,
                 load: home.loadVisitSummary,
+                download: home.downloadVisitAttachment,
               ),
             ],
           ),
