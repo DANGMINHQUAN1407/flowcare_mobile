@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -20,6 +19,16 @@ class HomeScreen extends StatelessWidget {
   final void Function(int tabIndex)? onNavigateToTab;
 
   const HomeScreen({super.key, this.onNavigateToTab});
+
+  void _openNewBookingTab(BuildContext context) {
+    try {
+      context.read<BookingProvider>().clearFollowUp();
+    } catch (_) {}
+    onNavigateToTab?.call(1);
+  }
+
+  String _formatDateOnly(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +66,7 @@ class HomeScreen extends StatelessWidget {
                       style: AppTextStyles.titleMedium,
                     ),
                     const SizedBox(height: 12),
-                    _buildQuickActionsGrid(context, patient),
+                    _buildQuickActionsGrid(context, homeProvider),
 
                     const SizedBox(height: 24),
 
@@ -258,7 +267,7 @@ class HomeScreen extends StatelessWidget {
                 child: SizedBox(
                   height: 42,
                   child: ElevatedButton.icon(
-                    onPressed: () => onNavigateToTab?.call(1),
+                    onPressed: () => _openNewBookingTab(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       foregroundColor: const Color(0xFF00478D),
@@ -490,7 +499,7 @@ class HomeScreen extends StatelessWidget {
                 child: SizedBox(
                   height: 42,
                   child: OutlinedButton.icon(
-                    onPressed: () => onNavigateToTab?.call(1),
+                    onPressed: () => _openNewBookingTab(context),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.primary,
                       side: const BorderSide(color: AppColors.primary),
@@ -910,8 +919,10 @@ class HomeScreen extends StatelessWidget {
     final apptCode = appointment.id.length >= 8
         ? appointment.id.substring(0, 8).toUpperCase()
         : appointment.id;
-    final dateStr = DateFormat('HH:mm - dd/MM/yyyy')
-        .format(appointment.scheduledTime);
+    final dateStr = hospitalTime(
+      appointment.scheduledTime,
+      pattern: 'HH:mm - dd/MM/yyyy',
+    );
 
     return Container(
       width: double.infinity,
@@ -992,7 +1003,12 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildQuickActionsGrid(BuildContext context, PatientModel? patient) {
+  Widget _buildQuickActionsGrid(
+    BuildContext context,
+    HomeProvider homeProvider,
+  ) {
+    final patient = homeProvider.patient;
+    final followUp = homeProvider.latestFollowUpOrder;
     return Column(
       children: [
         Row(
@@ -1004,7 +1020,7 @@ class HomeScreen extends StatelessWidget {
                 icon: Icons.calendar_month_rounded,
                 iconColor: AppColors.primary,
                 iconBgColor: AppColors.primaryLight,
-                onTap: () => onNavigateToTab?.call(1),
+                onTap: () => _openNewBookingTab(context),
               ),
             ),
             const SizedBox(width: 12),
@@ -1018,7 +1034,7 @@ class HomeScreen extends StatelessWidget {
                 onTap: () => PregnancyTrackerSheet.show(
                   context,
                   patient: patient,
-                  onBookAppointment: () => onNavigateToTab?.call(1),
+                  onBookAppointment: () => _openNewBookingTab(context),
                 ),
               ),
             ),
@@ -1053,24 +1069,37 @@ class HomeScreen extends StatelessWidget {
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(
-              child: _buildActionCard(
-                title: 'Đặt lịch tái khám',
-                subtitle: 'Theo chỉ định bác sĩ',
-                icon: Icons.sync_rounded,
-                iconColor: const Color(0xFF0077C8),
-                iconBgColor: const Color(0xFFEBF5FF),
-                onTap: () {
-                  final bookingProvider = Provider.of<BookingProvider>(
-                    context,
-                    listen: false,
-                  );
-                  bookingProvider.setIsFollowUp(true);
-                  onNavigateToTab?.call(1);
-                },
+            if (followUp != null) ...[
+              Expanded(
+                child: _buildActionCard(
+                  title: 'Tái khám theo hẹn',
+                  subtitle:
+                      '${followUp.targetTime != null ? '${followUp.targetTime} · ' : 'Hẹn '}${_formatDateOnly(followUp.targetDate)}',
+                  icon: Icons.sync_rounded,
+                  iconColor: const Color(0xFF0077C8),
+                  iconBgColor: const Color(0xFFEBF5FF),
+                  onTap: () async {
+                    final accepted = await context
+                        .read<BookingProvider>()
+                        .openFollowUp(followUp.id);
+                    if (!context.mounted) return;
+                    if (accepted) {
+                      onNavigateToTab?.call(1);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Chưa xác nhận được phiếu tái khám còn khả dụng.',
+                          ),
+                        ),
+                      );
+                      homeProvider.loadHomeData(isRefresh: true);
+                    }
+                  },
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
+              const SizedBox(width: 12),
+            ],
             Expanded(
               child: _buildActionCard(
                 title: 'Lịch sử khám & Đơn',

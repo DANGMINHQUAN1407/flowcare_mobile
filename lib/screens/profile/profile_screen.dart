@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/patient_session_service.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/profile_provider.dart';
+import '../../widgets/patient_profile_editor.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -24,6 +25,25 @@ class ProfileScreen extends StatelessWidget {
           appBar: AppBar(
             title: const Text('Hồ sơ sức khỏe Sản - Phụ khoa'),
             actions: [
+              if (patient != null && !PatientSessionService().isDemo)
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined),
+                  tooltip: 'Cập nhật hồ sơ',
+                  onPressed: () async {
+                    final saved = await showDialog<bool>(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => PatientProfileEditor(
+                        patient: patient,
+                        provider: profileProvider,
+                        identityLocked: homeProvider.visits.isNotEmpty,
+                      ),
+                    );
+                    if (saved == true && context.mounted) {
+                      await homeProvider.loadHomeData(isRefresh: true);
+                    }
+                  },
+                ),
               IconButton(
                 icon: const Icon(Icons.refresh_rounded),
                 tooltip: 'Làm mới hồ sơ',
@@ -41,11 +61,7 @@ class ProfileScreen extends StatelessWidget {
                     color: AppColors.emergency,
                   ),
                   tooltip: 'Đăng xuất hồ sơ',
-                  onPressed: () => _showLogoutConfirmationDialog(
-                    context,
-                    homeProvider,
-                    profileProvider,
-                  ),
+                  onPressed: () => _showLogoutConfirmationDialog(context),
                 ),
             ],
           ),
@@ -121,19 +137,7 @@ class ProfileScreen extends StatelessWidget {
 
                       const SizedBox(height: 20),
                     ],
-                    // Section 5: Cài đặt & Hỗ trợ y tế
-                    _buildSectionHeader(
-                      icon: Icons.support_agent_rounded,
-                      title: 'Hỗ trợ & Bảo mật y tế',
-                      subtitle: 'Tổng đài viện và tiêu chuẩn bảo mật dữ liệu',
-                    ),
-                    const SizedBox(height: 10),
-                    _buildSupportSection(
-                      context,
-                      homeProvider,
-                      profileProvider,
-                      phone,
-                    ),
+                    _buildAccountSection(context),
 
                     const SizedBox(height: 30),
                   ],
@@ -406,67 +410,25 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // --- 5. SUPPORT & SECURITY SECTION ---
-  Widget _buildSupportSection(
-    BuildContext context,
-    HomeProvider homeProvider,
-    ProfileProvider profileProvider,
-    String phone,
-  ) {
+  Widget _buildAccountSection(BuildContext context) {
     return Column(
       children: [
         _buildActionTile(
           icon: Icons.logout_rounded,
           title: 'Đăng xuất tài khoản',
-          subtitle: 'Xóa phiên đăng nhập và dữ liệu đang xem trên thiết bị',
           isDestructive: true,
-          onTap: () => _showLogoutConfirmationDialog(
-            context,
-            homeProvider,
-            profileProvider,
-          ),
-        ),
-        _buildActionTile(
-          icon: Icons.headset_mic_outlined,
-          title: 'Tổng đài cấp cứu & Chăm sóc sản khoa',
-          subtitle: AppConstants.hotline,
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Tổng đài hỗ trợ cấp cứu & tư vấn thai sản: 1900 6868',
-                ),
-              ),
-            );
-          },
-        ),
-        _buildActionTile(
-          icon: Icons.local_hospital_outlined,
-          title: 'Địa chỉ Bệnh viện Phụ Sản FlowCare',
-          subtitle: AppConstants.hospitalAddress,
-          onTap: () {},
-        ),
-        _buildActionTile(
-          icon: Icons.privacy_tip_outlined,
-          title: 'Bảo mật hồ sơ bệnh án điện tử (EMR)',
-          subtitle: 'Chuẩn bảo mật dữ liệu y tế HL7/FHIR & HIPAA',
-          onTap: () {},
+          onTap: () => _showLogoutConfirmationDialog(context),
         ),
         _buildActionTile(
           icon: Icons.info_outline_rounded,
           title: 'Phiên bản ứng dụng',
           subtitle: 'FlowCare AI Patient Mobile v${AppConstants.appVersion}',
-          onTap: () {},
         ),
       ],
     );
   }
 
-  void _showLogoutConfirmationDialog(
-    BuildContext context,
-    HomeProvider homeProvider,
-    ProfileProvider profileProvider,
-  ) {
+  void _showLogoutConfirmationDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -545,11 +507,9 @@ class ProfileScreen extends StatelessWidget {
   Widget _buildActionTile({
     required IconData icon,
     required String title,
-    required String subtitle,
-    Color? iconColor,
-    Color? iconBgColor,
+    String? subtitle,
     bool isDestructive = false,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -569,10 +529,10 @@ class ProfileScreen extends StatelessWidget {
           leading: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: iconBgColor ?? AppColors.primaryLight,
+              color: AppColors.primaryLight,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: iconColor ?? AppColors.primary, size: 20),
+            child: Icon(icon, color: AppColors.primary, size: 20),
           ),
           title: Text(
             title,
@@ -584,18 +544,22 @@ class ProfileScreen extends StatelessWidget {
                   : AppColors.textPrimary,
             ),
           ),
-          subtitle: Text(
-            subtitle,
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          trailing: Icon(
-            Icons.chevron_right_rounded,
-            color: isDestructive ? AppColors.emergency : AppColors.textTertiary,
-            size: 20,
-          ),
+          subtitle: subtitle == null
+              ? null
+              : Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+          trailing: onTap == null
+              ? null
+              : const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.emergency,
+                  size: 20,
+                ),
           onTap: onTap,
         ),
       ),

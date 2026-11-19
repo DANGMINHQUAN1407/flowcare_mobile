@@ -5,6 +5,13 @@ class ApiException implements Exception {
 
   ApiException(this.message, {this.statusCode, this.data});
 
+  Set<String> get codes {
+    final errors = data is Map ? data['errors'] : null;
+    return errors is List
+        ? errors.map((value) => value.toString()).toSet()
+        : <String>{};
+  }
+
   @override
   String toString() => 'ApiException: $message (Status: $statusCode)';
 }
@@ -25,7 +32,16 @@ class UnauthorizedException extends ApiException {
 class ForbiddenException extends ApiException {
   ForbiddenException([
     super.message = 'Tài khoản chưa được cấp quyền sử dụng chức năng này.',
-  ]) : super(statusCode: 403);
+    dynamic responseData,
+  ]) : super(statusCode: 403, data: responseData);
+}
+
+class PasswordChangeRequiredException extends ForbiddenException {
+  PasswordChangeRequiredException([
+    String message = 'Vui lòng đổi mật khẩu tạm trước khi sử dụng ứng dụng.',
+  ]) : super(message, {
+         'errors': ['PASSWORD_CHANGE_REQUIRED'],
+       });
 }
 
 class SessionChangedException extends ApiException {
@@ -53,6 +69,7 @@ class NotFoundException extends ApiException {
 }
 
 class ValidationException extends ApiException {
-  final Map<String, dynamic>? errors;
-  ValidationException(super.message, {this.errors}) : super(statusCode: 400);
+  final Object? errors;
+  ValidationException(super.message, {this.errors, super.data})
+    : super(statusCode: 400);
 }

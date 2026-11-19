@@ -6,6 +6,7 @@ class PatientLogin {
   final String token, patientId, userName;
   final DateTime expiresAt;
   final bool isDemo;
+  final bool mustChangePassword;
   final String? patientPhone;
   const PatientLogin({
     required this.token,
@@ -13,6 +14,7 @@ class PatientLogin {
     required this.userName,
     required this.expiresAt,
     this.isDemo = false,
+    this.mustChangePassword = false,
     this.patientPhone,
   });
 }
@@ -77,7 +79,32 @@ class AuthService {
       patientId: patientId,
       userName: profile['userName']?.toString() ?? userName.trim(),
       expiresAt: session.expiresAt,
+      mustChangePassword: profile['mustChangePassword'] == true,
     );
+  }
+
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    if (currentPassword.length < 8 ||
+        newPassword.length < 8 ||
+        newPassword.length > 256 ||
+        newPassword == currentPassword) {
+      throw ValidationException(
+        'Mật khẩu mới phải từ 8 đến 256 ký tự và khác mật khẩu hiện tại.',
+      );
+    }
+    final response = await _client.post<bool>(
+      '/auth/change-password',
+      body: {'currentPassword': currentPassword, 'newPassword': newPassword},
+      fromJsonT: (json) => json == true,
+    );
+    if (response.data != true) {
+      throw ApiException(
+        'Máy chủ chưa xác nhận đổi mật khẩu. Thử đăng nhập bằng mật khẩu mới trước khi thao tác lại.',
+      );
+    }
   }
 
   // Registration creates the account on BE. Login remains a separate step, so
@@ -85,18 +112,14 @@ class AuthService {
   Future<String> register(PatientRegistration registration) async {
     try {
       final response = await _client.post<Map<String, dynamic>>(
-        registration.isFromReception
-            ? '/auth/register-from-reception'
-            : '/auth/register',
+        '/auth/register',
         requiresAuth: false,
         body: registration.toJson(),
         fromJsonT: (json) => Map<String, dynamic>.from(json as Map),
       );
       final userName = response.data?['userName']?.toString();
       final patientId = response.data?['patientId']?.toString() ?? '';
-      if ((registration.isFromReception
-              ? PatientRegistration.phoneError(userName) != null
-              : userName != registration.phone.trim()) ||
+      if (userName != registration.phone.trim() ||
           !RegExp(r'^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$')
               .hasMatch(patientId) ||
           patientId == '00000000-0000-0000-0000-000000000000') {
@@ -112,17 +135,9 @@ class AuthService {
       final codes = errors is List
           ? errors.map((item) => item.toString()).toSet()
           : <String>{};
-      if (codes.contains('PATIENT_LINK_VERIFICATION_REQUIRED')) {
+      if (codes.contains('PATIENT_ACCOUNT_AT_RECEPTION')) {
         throw ApiException(
-          'Số điện thoại đã có hồ sơ tại bệnh viện. Chọn “Đã có mã tại quầy” '
-          'và nhập mã liên kết trên phiếu khám; nếu chưa có mã, nhờ quầy đối chiếu danh tính và in mã.',
-          statusCode: 409,
-        );
-      }
-      if (codes.contains('REGISTRATION_LINK_INVALID')) {
-        throw ApiException(
-          'Mã liên kết không đúng, đã hết hạn hoặc không còn hiệu lực. '
-          'Kiểm tra phiếu hoặc xin mã mới tại quầy.',
+          'Số điện thoại này đã có hồ sơ tại bệnh viện. Vui lòng mang giấy tờ tùy thân đến quầy tiếp đón để được cấp tài khoản.',
           statusCode: 409,
         );
       }

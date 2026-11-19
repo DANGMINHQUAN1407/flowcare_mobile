@@ -45,12 +45,9 @@ void main() {
       ),
     );
     addTearDown(service.close);
-    final plan = await service.optimize('visit', 'patient');
+    final plan = await service.accept('visit', 'patient', 'proposal');
     expect(plan.status, 'Active');
-    expect(
-      calls.single.headers['Idempotency-Key'],
-      matches(RegExp(r'^[0-9a-f-]{36}$')),
-    );
+    expect(jsonDecode(calls.single.body), {'proposedPlanId': 'proposal'});
     expect(plan.mode, 'Optimized');
     expect(calls.single.method, 'POST');
     expect(
@@ -81,49 +78,15 @@ void main() {
     );
     addTearDown(service.close);
     await expectLater(
-      service.optimize('visit', 'other-patient'),
+      service.accept('visit', 'other-patient', 'proposal'),
       throwsA(isA<ForbiddenException>()),
     );
     await expectLater(
-      service.optimize('visit', 'patient'),
+      service.accept('visit', 'patient', 'proposal'),
       throwsA(isA<ApiException>()),
     );
   });
 
-  test('a failed response keeps the request key; a successful new tap gets a new key', () async {
-    final keys = <String?>[];
-    final service = RouteOptimizationService(
-      apiClient: ApiClient(
-        baseUrl: 'http://test/api/v1',
-        client: MockClient((r) async {
-          keys.add(r.headers['Idempotency-Key']);
-          if (keys.length == 1) throw http.ClientException('Lost response');
-          return http.Response(
-            jsonEncode({
-              'success': true,
-              'data': {
-                'id': 'active',
-                'encounterId': 'visit',
-                'status': 'Active',
-                'mode': 'Optimized',
-                'steps': [],
-              },
-            }),
-            200,
-          );
-        }),
-      ),
-    );
-    addTearDown(service.close);
-    await expectLater(
-      service.optimize('visit', 'patient'),
-      throwsA(isA<ApiException>()),
-    );
-    await service.optimize('visit', 'patient');
-    await service.optimize('visit', 'patient');
-    expect(keys[0], keys[1]);
-    expect(keys[1], isNot(keys[2]));
-  });
   test('a proposal response cannot be presented as an applied route', () async {
     final service = RouteOptimizationService(
       apiClient: ApiClient(
@@ -147,8 +110,62 @@ void main() {
     );
     addTearDown(service.close);
     await expectLater(
-      service.optimize('visit', 'patient'),
+      service.accept('visit', 'patient', 'proposal'),
       throwsA(isA<ApiException>()),
     );
   });
+
+  test(
+    'decline posts the viewed ID and stops if a replacement is read',
+    () async {
+      final calls = <http.Request>[];
+      var openId = 'proposal';
+      final service = RouteOptimizationService(
+        apiClient: ApiClient(
+          baseUrl: 'http://test/api/v1',
+          client: MockClient((request) async {
+            calls.add(request);
+            return http.Response(
+              jsonEncode({
+                'success': true,
+                'data': {
+                  'canOptimize': request.method == 'GET',
+                  'remainingOrders': 2,
+                  if (request.method == 'GET') ...{
+                    'proposedPlanId': openId,
+                    'offer': {
+                      'id': openId,
+                      'encounterId': 'visit',
+                      'status': 'Proposed',
+                      'steps': [],
+                    },
+                  },
+                },
+              }),
+              200,
+            );
+          }),
+        ),
+      );
+      addTearDown(service.close);
+      await service.decline('visit', 'patient', 'proposal', ' Giữ tuyến ');
+      expect(calls.last.url.path, endsWith('/optimize/decline'));
+      expect(jsonDecode(calls.last.body), {
+        'proposedPlanId': 'proposal',
+        'reason': 'Giữ tuyến',
+      });
+      openId = 'replacement';
+      await expectLater(
+        service.decline('visit', 'patient', 'proposal', ''),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.codes,
+            'codes',
+            contains('OFFER_STALE'),
+          ),
+        ),
+      );
+      expect(calls.where((request) => request.method == 'POST'), hasLength(1));
+    },
+  );
 }

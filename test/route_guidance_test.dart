@@ -53,7 +53,7 @@ void main() {
         activeEncounters()..plan = ParaclinicalPlanModel.fromJson(original),
       );
       expect(
-        find.textContaining('Lộ trình ban đầu theo thứ tự chỉ định.'),
+        find.textContaining('Lộ trình hiện tại theo thứ tự bác sĩ chỉ định.'),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);

@@ -35,9 +35,6 @@ class FakeAppointments extends AppointmentService {
   Future<List<AppointmentModel>> getAppointmentsByPatient(
     String patientId,
   ) async => [];
-  @override
-  Future<AppointmentCheckModel> checkAppointmentByPhone(String phone) async =>
-      const AppointmentCheckModel(hasAppointment: false);
 }
 
 class FakeFollowUps extends FollowUpService {
@@ -56,6 +53,12 @@ class FakeQueue extends QueueService {
 
 class FakeEncounters extends EncounterService {
   EncounterSummaryModel summary = summaryFixture();
+  List<Map<String, dynamic>> notifications = [];
+
+  @override
+  Future<List<Map<String, dynamic>>> getNotifications(
+    String encounterId,
+  ) async => notifications;
   ParaclinicalPlanModel? plan = planFixture();
   bool failPlan = false;
   Object? summaryError, planError, historyError, activeError;

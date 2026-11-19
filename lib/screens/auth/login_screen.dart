@@ -96,7 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Đăng nhập bằng tài khoản bạn đã tự đăng ký.',
+                        'Đăng nhập bằng SĐT và mật khẩu của bạn.',
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 28),
@@ -188,7 +188,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 20),
                       const Text(
-                        'Đã có mã liên kết trên phiếu khám? Vào Đăng ký, chọn “Đã có mã tại quầy”.',
+                        'Đã khám tại viện? Đăng nhập bằng SĐT và mật khẩu tạm in trên phiếu. App sẽ yêu cầu đổi mật khẩu ở lần đầu.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppColors.textSecondary),
                       ),

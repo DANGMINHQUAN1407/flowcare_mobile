@@ -9,6 +9,7 @@ class AppointmentModel {
   final String source;
   final DateTime createdAt;
   final String? patientPhone;
+  bool get canCancel => ['pending', 'confirmed'].contains(status.toLowerCase());
 
   const AppointmentModel({
     required this.id,
@@ -28,12 +29,17 @@ class AppointmentModel {
       id: json['id']?.toString() ?? '',
       patientId: json['patientId']?.toString(),
       patientName: json['patientName']?.toString() ?? '',
-      scheduledTime: DateTime.tryParse(json['scheduledTime']?.toString() ?? '') ?? DateTime.now(),
+      scheduledTime:
+          DateTime.tryParse(json['scheduledTime']?.toString() ?? '') ??
+          DateTime.now(),
       serviceTypeId: json['serviceTypeId']?.toString() ?? '',
-      serviceTypeName: json['serviceTypeName']?.toString() ?? 'Chuyên khoa Sản - Phụ',
+      serviceTypeName:
+          json['serviceTypeName']?.toString() ?? 'Chuyên khoa Sản - Phụ',
       status: json['status']?.toString() ?? 'Pending',
       source: json['source']?.toString() ?? 'Online',
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now(),
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+          DateTime.now(),
       patientPhone: json['patientPhone']?.toString(),
     );
   }
@@ -69,7 +75,9 @@ class AppointmentCheckModel {
     return AppointmentCheckModel(
       hasAppointment: json['hasAppointment'] == true,
       appointment: json['appointment'] != null
-          ? AppointmentModel.fromJson(json['appointment'] as Map<String, dynamic>)
+          ? AppointmentModel.fromJson(
+              json['appointment'] as Map<String, dynamic>,
+            )
           : null,
       activeEncounterId: json['activeEncounterId']?.toString(),
     );
@@ -98,8 +106,11 @@ class AppointmentSlotModel {
   });
 
   factory AppointmentSlotModel.fromJson(Map<String, dynamic> json) {
-    final start = DateTime.tryParse(json['startTime']?.toString() ?? '') ?? DateTime.now();
-    final end = DateTime.tryParse(json['endTime']?.toString() ?? '') ?? DateTime.now();
+    final start =
+        DateTime.tryParse(json['startTime']?.toString() ?? '') ??
+        DateTime.now();
+    final end =
+        DateTime.tryParse(json['endTime']?.toString() ?? '') ?? DateTime.now();
     final rawAvailable = json['isAvailable'] == true;
     final isPast = start.isBefore(DateTime.now());
 

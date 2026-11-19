@@ -27,6 +27,7 @@ class ApiClient {
   static int _sessionVersion = 0;
   static int get sessionVersion => _sessionVersion;
   static void Function()? onUnauthorized;
+  static void Function()? onPasswordChangeRequired;
 
   static void setAuthToken(String? token, {bool readOnlyDemo = false}) {
     _authToken = token;
@@ -212,13 +213,22 @@ class ApiClient {
       case 401:
         throw UnauthorizedException('Tên đăng nhập hoặc mật khẩu không đúng.');
       case 403:
-        throw ForbiddenException();
+        if (decodedBody is Map &&
+            decodedBody['errors'] is List &&
+            (decodedBody['errors'] as List).contains(
+              'PASSWORD_CHANGE_REQUIRED',
+            )) {
+          onPasswordChangeRequired?.call();
+          throw PasswordChangeRequiredException(errorMessage.toString());
+        }
+        throw ForbiddenException(errorMessage.toString(), decodedBody);
       case 400:
         throw ValidationException(
           errorMessage.toString(),
           errors: decodedBody is Map<String, dynamic>
               ? decodedBody['errors']
               : null,
+          data: decodedBody,
         );
       case 404:
         throw NotFoundException(errorMessage.toString());

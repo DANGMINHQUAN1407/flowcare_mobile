@@ -4,6 +4,8 @@ class ParaclinicalPlanModel {
   final String status;
   final String source;
   final String? mode;
+  final bool isLocked;
+  final int? acceptedOfferSavedMinutes;
   final String nextAfterPlan;
   final List<ParaclinicalStepModel> steps;
   final double? estimatedTotalMinutes;
@@ -15,6 +17,8 @@ class ParaclinicalPlanModel {
     required this.status,
     required this.source,
     this.mode,
+    this.isLocked = false,
+    this.acceptedOfferSavedMinutes,
     required this.nextAfterPlan,
     required this.steps,
     this.estimatedTotalMinutes,
@@ -39,6 +43,11 @@ class ParaclinicalPlanModel {
       status: json['status']?.toString() ?? '',
       source: json['source']?.toString() ?? '',
       mode: json['mode']?.toString(),
+      isLocked: json['isLocked'] == true,
+      acceptedOfferSavedMinutes: switch (json['offer']) {
+        {'status': 'Accepted', 'savedMinutes': final int minutes} => minutes,
+        _ => null,
+      },
       nextAfterPlan: json['nextAfterPlan']?.toString() ?? '',
       estimatedTotalMinutes: readMinutes(json['estimatedTotalMinutes']),
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
@@ -49,6 +58,8 @@ class ParaclinicalPlanModel {
 
 class ParaclinicalStepModel {
   final String id;
+  final String? medicalOrderId;
+  final String? serviceCode;
   final String serviceTypeName;
   final String roomName;
   final String? floor;
@@ -74,6 +85,8 @@ class ParaclinicalStepModel {
 
   const ParaclinicalStepModel({
     required this.id,
+    this.medicalOrderId,
+    this.serviceCode,
     required this.serviceTypeName,
     required this.roomName,
     required this.stepOrder,
@@ -118,8 +131,14 @@ class ParaclinicalStepModel {
     Map<String, dynamic> json,
   ) => ParaclinicalStepModel(
     id: json['id']?.toString() ?? '',
+    medicalOrderId: json['medicalOrderId'] as String?,
+    serviceCode:
+        _nonEmptyString(json['serviceCode']) ??
+        _nonEmptyString(json['serviceTypeCode']),
     serviceTypeName:
-        json['serviceTypeName']?.toString() ?? 'Dịch vụ cận lâm sàng',
+        _nonEmptyString(json['serviceName']) ??
+        _nonEmptyString(json['serviceTypeName']) ??
+        'Dịch vụ cận lâm sàng',
     roomName: json['assignedRoomName']?.toString() ?? '',
     floor: json['assignedRoomFloor']?.toString(),
     building: json['assignedRoomBuilding']?.toString(),
@@ -157,6 +176,9 @@ class ParaclinicalStepModel {
     estimatedResultWaitMinutes: readMinutes(json['estimatedResultWaitMinutes']),
   );
 }
+
+String? _nonEmptyString(Object? value) =>
+    value is String && value.trim().isNotEmpty ? value.trim() : null;
 
 double? readMinutes(dynamic value) =>
     value is num && value.isFinite && value >= 0 ? value.toDouble() : null;

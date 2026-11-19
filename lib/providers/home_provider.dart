@@ -1,4 +1,5 @@
 import 'dart:async' hide TimeoutException;
+import 'dart:convert';
 
 import '../core/network/api_exceptions.dart';
 
@@ -12,6 +13,7 @@ import '../models/patient_journey_model.dart';
 import '../models/patient_model.dart';
 import '../models/patient_visit_model.dart';
 import '../models/queue_ticket_model.dart';
+import '../models/visit_summary_model.dart';
 import '../services/appointment_service.dart';
 import '../services/encounter_service.dart';
 import '../services/follow_up_service.dart';
@@ -23,9 +25,17 @@ import '../services/queue_service.dart';
 class JourneyNotice {
   final String key;
   final String message;
-  final DateTime createdAt = DateTime.now();
-  bool isRead = false;
-  JourneyNotice(this.key, this.message);
+  final String? encounterId, proposedPlanId;
+  final DateTime createdAt;
+  bool isRead;
+  JourneyNotice(
+    this.key,
+    this.message, {
+    this.encounterId,
+    this.proposedPlanId,
+    DateTime? createdAt,
+    this.isRead = false,
+  }) : createdAt = createdAt ?? DateTime.now();
 }
 
 class HomeProvider extends ChangeNotifier {
@@ -73,6 +83,7 @@ class HomeProvider extends ChangeNotifier {
   FollowUpOrderModel? _latestFollowUpOrder;
   List<PatientVisitModel> _visits = [];
   final List<JourneyNotice> _notices = [];
+  final Set<String> _loadingPaymentNotices = {};
   Timer? _pollTimer, _eventDebounce;
 
   bool get isLoading => _isLoading;
@@ -111,6 +122,21 @@ class HomeProvider extends ChangeNotifier {
       !_disposed &&
       version == _loadVersion &&
       _sessionService.version == _boundSessionVersion;
+
+  Future<VisitSummaryModel> loadVisitSummary(String encounterId) async {
+    if (!_canViewVisitSummary(encounterId)) throw SessionChangedException();
+    final summary = await _encounterService.getVisitSummary(encounterId);
+    if (!_canViewVisitSummary(encounterId)) throw SessionChangedException();
+    return summary;
+  }
+
+  bool _canViewVisitSummary(String encounterId) =>
+      !_disposed &&
+      _sessionService.version == _boundSessionVersion &&
+      !_sessionService.isDemo &&
+      _sessionService.isAuthenticated &&
+      (_encounterSummary?.encounterId == encounterId ||
+          _visits.any((visit) => visit.encounterId == encounterId));
 
   Future<void> loadHomeData({bool isRefresh = false}) async {
     final version = ++_loadVersion;
@@ -159,7 +185,13 @@ class HomeProvider extends ChangeNotifier {
       final history = lookup[0] as List<PatientVisitModel>?;
       final active = lookup[1] as EncounterSummaryModel?;
       final followUps = lookup[2] as List<FollowUpOrderModel>? ?? [];
-      _latestFollowUpOrder = followUps.isEmpty ? null : followUps.first;
+      final completedEncounters = (history ?? const <PatientVisitModel>[])
+          .where((visit) => visit.isFinalized)
+          .map((visit) => visit.encounterId)
+          .toSet();
+      _latestFollowUpOrder = followUps
+          .where((order) => order.canBookFor(patientId, completedEncounters))
+          .firstOrNull;
       if (!failures.containsKey('Lịch sử lượt khám')) {
         _visits = history ?? [];
       }
@@ -283,6 +315,7 @@ class HomeProvider extends ChangeNotifier {
     if (announce && sameVisit && previous != null) {
       _announceChanges(previous, journey!);
     }
+    if (_updatesEnabled) unawaited(_loadPaymentNotices(summary.encounterId));
   }
 
   void _markJourneyFailure(Object error) {
@@ -351,6 +384,9 @@ class HomeProvider extends ChangeNotifier {
   void startUpdates() {
     if (_disposed || _updatesEnabled) return;
     _updatesEnabled = true;
+    if (_encounterSummary case final summary?) {
+      unawaited(_loadPaymentNotices(summary.encounterId));
+    }
     _pollTimer = Timer.periodic(
       const Duration(seconds: 20),
       (_) => unawaited(refreshJourney()),
@@ -384,19 +420,22 @@ class HomeProvider extends ChangeNotifier {
     bool watchingThisVisit() =>
         !_disposed &&
         _updatesEnabled &&
+        _sessionService.version == _boundSessionVersion &&
         currentPhone == phone &&
         _encounterSummary?.encounterId == summary.encounterId;
     unawaited(
       _realtimeService
           .connect(
             encounterId: summary.encounterId,
-            onEvent: (event) {
+            onEvent: (event, [payload]) {
               if (!watchingThisVisit()) return;
-              if (event == 'NotificationReceived') {
-                _addNotice(
-                  'notification:${DateTime.now().millisecondsSinceEpoch}',
-                  'Có thông báo mới từ bệnh viện.',
-                );
+              if (event == 'RouteOfferAvailable' ||
+                  (event == 'NotificationReceived' &&
+                      payload is Map &&
+                      payload['type'] == 'RouteOfferAvailable')) {
+                _announceRouteOffer(summary.encounterId, event, payload);
+              } else if (event == 'NotificationReceived') {
+                _announceServerNotification(summary.encounterId, payload);
               }
               _eventDebounce?.cancel();
               _eventDebounce = Timer(
@@ -454,9 +493,147 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
-  void _addNotice(String key, String message) {
+  void _announceRouteOffer(String encounterId, String event, Object? payload) {
+    if (payload is! Map || payload['encounterId'] != encounterId) return;
+    final direct = event == 'RouteOfferAvailable';
+    Object? details = direct ? payload['offer'] : payload['payloadJson'];
+    if (!direct && details is String) {
+      try {
+        details = jsonDecode(details);
+      } on FormatException {
+        return;
+      }
+    }
+    if (details is! Map) return;
+    final id = direct ? payload['id'] : details['planId'];
+    if (id is! String || id.isEmpty) return;
+    final minutes = details['savedMinutes'];
+    _addNotice(
+      'route-offer:$encounterId:$id',
+      minutes is int && minutes > 0
+          ? 'Có lộ trình nhanh hơn khoảng $minutes phút'
+          : 'Có đề xuất tối ưu lộ trình',
+      encounterId: encounterId,
+      proposedPlanId: id,
+    );
+  }
+
+  void _announceServerNotification(String encounterId, Object? payload) {
+    if (payload is! Map) {
+      _addNotice(
+        'notification:${DateTime.now().millisecondsSinceEpoch}',
+        'Có thông báo mới từ bệnh viện.',
+        encounterId: encounterId,
+      );
+      return;
+    }
+    if (payload['encounterId'] != encounterId) return;
+    final type = payload['type']?.toString();
+    final rawMessage = payload['message']?.toString().trim();
+    if (type == 'PaymentSuccess') {
+      Object? details = payload['payloadJson'];
+      if (details is String) {
+        try {
+          details = jsonDecode(details);
+        } on FormatException {
+          details = null;
+        }
+      }
+      final ref = details is Map
+          ? (details['referenceId'] ?? details['orderCode'])?.toString()
+          : null;
+      final key = (ref != null && ref.isNotEmpty)
+          ? 'payment:$encounterId:$ref'
+          : 'notification:${payload['id'] ?? DateTime.now().millisecondsSinceEpoch}';
+      _addNotice(
+        key,
+        (rawMessage != null && rawMessage.isNotEmpty)
+            ? rawMessage
+            : 'Đã chuyển tiền thành công qua PayOS.',
+        encounterId: encounterId,
+        createdAt: DateTime.tryParse(payload['createdAt']?.toString() ?? ''),
+        isRead: payload['isRead'] == true,
+      );
+      return;
+    }
+    _addNotice(
+      'notification:${payload['id'] ?? DateTime.now().millisecondsSinceEpoch}',
+      (rawMessage != null && rawMessage.isNotEmpty)
+          ? rawMessage
+          : 'Có thông báo mới từ bệnh viện.',
+      encounterId: encounterId,
+    );
+  }
+
+  Future<void> _loadPaymentNotices(String encounterId) async {
+    if (!_sessionService.isAuthenticated ||
+        _sessionService.isDemo ||
+        !_loadingPaymentNotices.add(encounterId)) {
+      return;
+    }
+    final version = _loadVersion;
+    try {
+      final notifications = await _encounterService.getNotifications(
+        encounterId,
+      );
+      if (!_isCurrent(version) ||
+          _encounterSummary?.encounterId != encounterId) {
+        return;
+      }
+      for (final notification in notifications.reversed) {
+        if (notification['type'] == 'PaymentSuccess') {
+          _announceServerNotification(encounterId, notification);
+        }
+      }
+    } on ApiException {
+      // Retry on the next journey refresh.
+    } finally {
+      _loadingPaymentNotices.remove(encounterId);
+    }
+  }
+
+  void addPaymentSuccessNotice({
+    required String encounterId,
+    required String orderId,
+    required String message,
+  }) {
+    final key = 'payment:$encounterId:$orderId';
+    final existing = _notices.indexWhere((n) => n.key == key);
+    if (existing >= 0) {
+      _notices[existing] = JourneyNotice(
+        key,
+        message,
+        encounterId: encounterId,
+        createdAt: _notices[existing].createdAt,
+        isRead: _notices[existing].isRead,
+      );
+      _notify();
+      return;
+    }
+    _addNotice(key, message, encounterId: encounterId);
+  }
+
+  void _addNotice(
+    String key,
+    String message, {
+    String? encounterId,
+    String? proposedPlanId,
+    DateTime? createdAt,
+    bool isRead = false,
+  }) {
     if (_notices.any((n) => n.key == key)) return;
-    _notices.insert(0, JourneyNotice(key, message));
+    final notice = JourneyNotice(
+      key,
+      message,
+      encounterId: encounterId,
+      proposedPlanId: proposedPlanId,
+      createdAt: createdAt,
+      isRead: isRead,
+    );
+    final index = _notices.indexWhere(
+      (item) => !item.createdAt.isAfter(notice.createdAt),
+    );
+    _notices.insert(index < 0 ? _notices.length : index, notice);
     if (_notices.length > 30) _notices.removeLast();
     _notify();
   }

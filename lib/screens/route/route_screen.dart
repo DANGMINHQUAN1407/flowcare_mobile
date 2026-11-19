@@ -1,25 +1,217 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/hospital_time.dart';
 import '../../models/patient_journey_model.dart';
 import '../../providers/home_provider.dart';
+import '../../widgets/medical_payment_dialog.dart';
 import '../../widgets/patient_notifications_sheet.dart';
 import '../../widgets/journey_timing_card.dart';
 import '../../widgets/journey_next_stop.dart';
 import '../../widgets/route_optimization_card.dart';
 import '../../services/route_optimization_service.dart';
+import '../../services/medical_payment_service.dart';
 import '../../services/patient_session_service.dart';
 
-class RouteScreen extends StatelessWidget {
+class RouteScreen extends StatefulWidget {
   final RouteOptimizationService? optimizationService;
-  const RouteScreen({super.key, this.optimizationService});
+  final MedicalPaymentService? paymentService;
+  final bool isVisible;
+
+  const RouteScreen({
+    super.key,
+    this.optimizationService,
+    this.paymentService,
+    this.isVisible = true,
+  });
+
+  @override
+  State<RouteScreen> createState() => _RouteScreenState();
+}
+
+class _RouteScreenState extends State<RouteScreen> {
+  late final MedicalPaymentService _paymentService =
+      widget.paymentService ?? MedicalPaymentService();
+  bool _paymentDialogOpen = false;
+  (int, String, String)? _reviewedRoute;
+  (int, int, String, DateTime?)? _billingKey;
+  Future<Map<String, double>>? _billing;
+
+  Future<void> _refreshRoute(HomeProvider home) {
+    setState(() => _billing = null);
+    return home.refreshJourney(includeFinalized: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant RouteScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isVisible && !oldWidget.isVisible) _billing = null;
+  }
+
+  @override
+  void dispose() {
+    if (widget.paymentService == null) _paymentService.close();
+    super.dispose();
+  }
+
+  PatientJourney? _paymentJourney(HomeProvider home) {
+    final journey = home.journey;
+    final session = PatientSessionService();
+    if (journey == null ||
+        journey.isFinalized ||
+        journey.summary.isEmergency ||
+        home.isJourneyStale ||
+        session.isDemo ||
+        !session.isAuthenticated ||
+        home.patientId == null ||
+        home.patientId != session.patientId ||
+        ApiClient.authToken == null) {
+      return null;
+    }
+    return journey;
+  }
+
+  List<MedicalPaymentOrder> _plannedOrders(PatientJourney? journey) {
+    final plan = journey?.plan;
+    if (journey == null ||
+        plan == null ||
+        plan.status.toLowerCase() != 'active' ||
+        plan.encounterId != journey.summary.encounterId) {
+      return const [];
+    }
+    return [
+      for (final step in plan.steps)
+        if (step.medicalOrderId case final id?
+            when id.isNotEmpty &&
+                ['pending', 'inqueue'].contains(step.status.toLowerCase()))
+          (id: id, name: step.serviceTypeName),
+    ];
+  }
+
+  bool _needsReview(PatientJourney? journey, List<MedicalPaymentOrder> orders) {
+    final plan = journey?.plan;
+    return orders.length >= 2 &&
+        plan != null &&
+        !plan.isLocked &&
+        plan.acceptedOfferSavedMinutes == null &&
+        _reviewedRoute !=
+            (PatientSessionService().version, plan.encounterId, plan.id);
+  }
+
+  Future<Map<String, double>> _billingFor(
+    HomeProvider home,
+    String encounterId,
+  ) {
+    final key = (
+      PatientSessionService().version,
+      ApiClient.sessionVersion,
+      encounterId,
+      home.lastUpdatedAt,
+    );
+    if (_billingKey != key) {
+      _billingKey = key;
+      _billing = null;
+    }
+    return _billing ??= _paymentService.getOutstandingMedicalOrders(
+      encounterId,
+      home.patientId!,
+    );
+  }
+
+  Future<void> _showPayment(HomeProvider home, String encounterId) async {
+    final session = (PatientSessionService().version, ApiClient.sessionVersion);
+    bool canPay() {
+      final journey = _paymentJourney(home);
+      final orders = _plannedOrders(journey);
+      return mounted &&
+          widget.isVisible &&
+          session ==
+              (PatientSessionService().version, ApiClient.sessionVersion) &&
+          journey?.summary.encounterId == encounterId &&
+          !_needsReview(journey, orders) &&
+          orders.isNotEmpty;
+    }
+
+    if (_paymentDialogOpen || !canPay()) return;
+    _paymentDialogOpen = true;
+    try {
+      setState(() => _billing = null);
+      Map<String, double> balances;
+      try {
+        balances = await _billingFor(home, encounterId);
+      } catch (_) {
+        return; // The payment panel reports the billing error and offers a retry.
+      }
+      if (!mounted || !canPay()) return;
+      final orders = _plannedOrders(_paymentJourney(home))
+          .where((item) => balances.containsKey(item.id))
+          .toList();
+      if (orders.isEmpty) return;
+      final outstanding = orders.fold<double>(
+        0,
+        (sum, item) => sum + balances[item.id]!,
+      );
+      const serviceName = 'phí cận lâm sàng';
+      final payment = await showMedicalPaymentReminder(
+        context,
+        encounterId: encounterId,
+        patientId: home.patientId!,
+        orderIds: orders.map((item) => item.id).toList(),
+        serviceName: serviceName,
+        outstanding: outstanding,
+        paymentService: _paymentService,
+      );
+      final sameVisitSession =
+          mounted &&
+          session ==
+              (PatientSessionService().version, ApiClient.sessionVersion) &&
+          home.encounterSummary?.encounterId == encounterId;
+      if (payment != null && sameVisitSession) {
+        final transferredAmount = payment.transferredAmount;
+        var message = payment.billChanged
+            ? 'Bảng kê đã thay đổi. Vui lòng kiểm tra tổng tiền mới.'
+            : 'Phí cận lâm sàng đã được thanh toán.';
+        if (transferredAmount != null) {
+          final formattedAmount = formatMedicalPaymentAmount(transferredAmount);
+          message =
+              'Đã chuyển tiền thành công $formattedAmount cho $serviceName.';
+          if (payment.orderCode case final code?) {
+            home.addPaymentSuccessNotice(
+              encounterId: encounterId,
+              orderId: code.toString(),
+              message: message,
+            );
+          }
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: payment.billChanged ? null : AppColors.success,
+              content: Text(message),
+            ),
+          );
+        }
+        setState(() => _billing = null);
+        await home.refreshJourney(includeFinalized: true);
+      } else if (canPay()) {
+        setState(() => _billing = null);
+      }
+    } finally {
+      _paymentDialogOpen = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) => Consumer<HomeProvider>(
     builder: (context, home, _) {
       final journey = home.journey;
+      final paymentJourney = _paymentJourney(home);
+      final orders = _plannedOrders(paymentJourney);
+      final encounterId = journey?.summary.encounterId;
+      final session = PatientSessionService().version;
+      final needsReview = _needsReview(paymentJourney, orders);
       return Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
@@ -27,7 +219,10 @@ class RouteScreen extends StatelessWidget {
           actions: [
             IconButton(
               tooltip: 'Thông báo lượt khám',
-              onPressed: () => showPatientNotifications(context),
+              onPressed: () => showPatientNotifications(
+                context,
+                optimizationService: widget.optimizationService,
+              ),
               icon: Badge(
                 isLabelVisible: home.unreadNoticeCount > 0,
                 label: Text(home.unreadNoticeCount.toString()),
@@ -36,16 +231,14 @@ class RouteScreen extends StatelessWidget {
             ),
             IconButton(
               tooltip: 'Cập nhật lộ trình',
-              onPressed: home.isRefreshing
-                  ? null
-                  : () => home.refreshJourney(includeFinalized: true),
+              onPressed: home.isRefreshing ? null : () => _refreshRoute(home),
               icon: const Icon(Icons.refresh_rounded),
             ),
           ],
         ),
         body: SafeArea(
           child: RefreshIndicator(
-            onRefresh: () => home.refreshJourney(includeFinalized: true),
+            onRefresh: () => _refreshRoute(home),
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
@@ -82,7 +275,7 @@ class RouteScreen extends StatelessWidget {
                   if (journey.plan?.followsOriginalOrder == true) ...[
                     const SizedBox(height: 12),
                     const Text(
-                      'Lộ trình ban đầu theo thứ tự chỉ định. Bấm Tối ưu để hệ thống tính và áp dụng ngay lộ trình mới.',
+                      'Lộ trình hiện tại theo thứ tự bác sĩ chỉ định.',
                       style: TextStyle(
                         fontSize: 12,
                         height: 1.5,
@@ -100,13 +293,33 @@ class RouteScreen extends StatelessWidget {
                       ),
                       encounterId: home.encounterSummary!.encounterId,
                       patientId: home.patientId!,
+                      currentPlan: journey.plan,
                       isStale: home.isJourneyStale,
+                      allowOptimization: orders.length >= 2,
                       refreshToken: home.lastUpdatedAt,
-                      service: optimizationService,
+                      service: widget.optimizationService,
+                      onRouteReviewed: orders.length < 2
+                          ? null
+                          : (planId) {
+                              if (mounted &&
+                                  session == PatientSessionService().version) {
+                                setState(
+                                  () => _reviewedRoute = (
+                                    session,
+                                    encounterId!,
+                                    planId,
+                                  ),
+                                );
+                              }
+                            },
                       onChanged: () =>
                           home.refreshJourney(includeFinalized: true),
                     ),
                   ],
+                  if (encounterId != null &&
+                      orders.isNotEmpty &&
+                      widget.isVisible)
+                    _paymentPanel(home, encounterId, orders, needsReview),
                   if (journey.timing != null) ...[
                     const SizedBox(height: 16),
                     JourneyTimingSummary(
@@ -171,6 +384,92 @@ class RouteScreen extends StatelessWidget {
         ),
       );
     },
+  );
+
+  Widget _paymentPanel(
+    HomeProvider home,
+    String encounterId,
+    List<MedicalPaymentOrder> orders,
+    bool needsReview,
+  ) => FutureBuilder<Map<String, double>>(
+    future: _billingFor(home, encounterId),
+    builder: (context, billing) {
+      if (billing.connectionState != ConnectionState.done) {
+        return const SizedBox.shrink();
+      }
+      if (billing.hasError) {
+        return _warning(
+          'Chưa xác minh được các khoản còn phải trả.',
+          onRetry: () => setState(() => _billing = null),
+        );
+      }
+      final outstanding = billing.data!;
+      final payable = orders
+          .where((order) => outstanding.containsKey(order.id))
+          .toList();
+      if (payable.isEmpty) return const SizedBox.shrink();
+      if (needsReview) {
+        return const Padding(
+          padding: EdgeInsets.only(top: 8),
+          child: Text('Kiểm tra phương án tối ưu trước khi thanh toán.'),
+        );
+      }
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Thanh toán cận lâm sàng',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              for (final order in payable)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    '${order.name} · ${formatMedicalPaymentAmount(outstanding[order.id]!)}',
+                  ),
+                ),
+              const SizedBox(height: 8),
+              _paymentButton(
+                payable.fold<double>(
+                  0,
+                  (sum, order) => sum + outstanding[order.id]!,
+                ),
+                () => _showPayment(home, encounterId),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+
+  Widget _paymentButton(double amount, VoidCallback onPressed) => SizedBox(
+    width: double.infinity,
+    child: OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft),
+      onPressed: onPressed,
+      icon: const Icon(Icons.qr_code_2_rounded),
+      label: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Thanh toán tổng phí'),
+            Text(
+              'Tổng còn phải trả: ${formatMedicalPaymentAmount(amount)}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
   );
 
   Widget _visitSelector(HomeProvider home) {

@@ -12,13 +12,13 @@ class PatientModel {
   final double? heightCm;
   final String? allergies;
   final String? medicalHistory;
-  
+
   // Obstetric & Gynecological Context
   final int? gestationalWeeks;
   final int? gestationalDays;
   final String? para; // G_P_A_L code
-  final String? lmp;  // Last Menstrual Period
-  final String? edd;  // Expected Due Date
+  final String? lmp; // Last Menstrual Period
+  final String? edd; // Expected Due Date
   final String? obstetricHistory;
   final String? menstrualCycle;
   final String? contraceptiveMethod;
@@ -51,7 +51,9 @@ class PatientModel {
 
   /// Pre-pregnancy BMI calculation (kg / m^2)
   double? get prePregnancyBmi {
-    if (prePregnancyWeight == null || heightCm == null || heightCm! <= 0) return null;
+    if (prePregnancyWeight == null || heightCm == null || heightCm! <= 0) {
+      return null;
+    }
     final heightM = heightCm! / 100.0;
     return prePregnancyWeight! / (heightM * heightM);
   }
@@ -67,31 +69,47 @@ class PatientModel {
   }
 
   /// Check if patient has registered pregnancy information
-  bool get hasPregnancyInfo => (gestationalWeeks != null && gestationalWeeks! > 0) || (edd != null && edd!.isNotEmpty);
+  bool get hasPregnancyInfo =>
+      (gestationalWeeks != null && gestationalWeeks! > 0) ||
+      (edd != null && edd!.isNotEmpty);
+
+  static String? _nonEmpty(Object? value) {
+    final text = value?.toString().trim();
+    return (text == null || text.isEmpty) ? null : text;
+  }
+
+  static int? _toInt(Object? value) {
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim());
+    return null;
+  }
 
   factory PatientModel.fromJson(Map<String, dynamic> json) {
     return PatientModel(
       id: json['id']?.toString() ?? '',
       fullName: json['fullName']?.toString() ?? '',
       phone: json['phone']?.toString() ?? '',
-      dob: json['dob']?.toString(),
-      gender: json['gender']?.toString() ?? 'Female',
-      address: json['address']?.toString(),
-      nationalId: json['nationalId']?.toString(),
-      bloodGroup: json['bloodGroup']?.toString(),
-      rhFactor: json['rhFactor']?.toString(),
+      dob: _nonEmpty(json['dob']),
+      gender: _nonEmpty(json['gender']) ?? 'Female',
+      address: _nonEmpty(json['address']),
+      nationalId: _nonEmpty(json['nationalId']),
+      bloodGroup: _nonEmpty(json['bloodGroup']),
+      rhFactor: _nonEmpty(json['rhFactor']),
       prePregnancyWeight: (json['prePregnancyWeight'] as num?)?.toDouble(),
       heightCm: (json['heightCm'] as num?)?.toDouble(),
-      allergies: json['allergies']?.toString(),
-      medicalHistory: json['medicalHistory']?.toString(),
-      gestationalWeeks: json['gestationalWeeks'] is num ? (json['gestationalWeeks'] as num).toInt() : null,
-      gestationalDays: json['gestationalDays'] is num ? (json['gestationalDays'] as num).toInt() : null,
-      para: json['para']?.toString(),
-      lmp: json['lmp']?.toString(),
-      edd: json['edd']?.toString(),
-      obstetricHistory: json['obstetricHistory']?.toString(),
-      menstrualCycle: json['menstrualCycle']?.toString(),
-      contraceptiveMethod: json['contraceptiveMethod']?.toString(),
+      allergies: _nonEmpty(json['allergies']),
+      medicalHistory: _nonEmpty(json['medicalHistory']),
+      gestationalWeeks:
+          _toInt(json['gestationalWeeks']) ??
+          _toInt(json['gestationalAgeWeeks']),
+      gestationalDays:
+          _toInt(json['gestationalDays']) ?? _toInt(json['gestationalAgeDays']),
+      para: _nonEmpty(json['para']) ?? _nonEmpty(json['paraCode']),
+      lmp: _nonEmpty(json['lmp']) ?? _nonEmpty(json['lastMenstrualPeriod']),
+      edd: _nonEmpty(json['edd']) ?? _nonEmpty(json['expectedDueDate']),
+      obstetricHistory: _nonEmpty(json['obstetricHistory']),
+      menstrualCycle: _nonEmpty(json['menstrualCycle']),
+      contraceptiveMethod: _nonEmpty(json['contraceptiveMethod']),
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString())
           : null,

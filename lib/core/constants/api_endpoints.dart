@@ -14,20 +14,20 @@ class ApiEndpoints {
   static String appointmentByPatient(String patientId) =>
       '/appointments/patient/$patientId';
 
-  // Service Types (Backend Dependency: pending GET /api/v1/service-types)
-  static const String serviceTypes = '/service-types';
+  static const String serviceTypes = '/services';
 
   // Patients
   static const String patientSearch = '/patients/search';
   static const String patients = '/patients';
 
   // Encounters & Live Status
-  static const String encounters = '/encounters';
   static String encounterStatus(String id) => '/encounters/$id/status';
   static String activeEncounterByPatient(String patientId) =>
       '/encounters/patient/$patientId/active';
   static String encounterHistoryByPatient(String patientId) =>
       '/patients/me/encounters';
+  static String myVisitSummary(String encounterId) =>
+      '/patients/me/encounters/${Uri.encodeComponent(encounterId)}/visit-summary';
   static String paraclinicalPlan(String encounterId) =>
       '/encounters/$encounterId/paraclinical-plan';
   static String encounterCheckIn(String id) => '/encounters/$id/checkin';

@@ -40,7 +40,7 @@ class RouteAssistanceRequest {
   String get label {
     if (isApplied) return 'Lộ trình mới đã được áp dụng';
     if (routeStatus == 'Proposed' && proposedPlanId != null) {
-      return 'Có đề xuất · Chờ bác sĩ duyệt';
+      return 'Đã có đề xuất lộ trình';
     }
     if (routeStatus == 'ProposalSuperseded') return 'Đề xuất đã được thay thế';
     if (routeStatus == 'Failed') return 'Chưa tạo được đề xuất';
@@ -59,7 +59,7 @@ class RouteComparisonStep {
   final int travel, queue, service, result;
   final int? cumulativeFinish;
   RouteComparisonStep.fromJson(Map<String, dynamic> json)
-    : serviceName = json['serviceTypeName'] as String,
+    : serviceName = (json['serviceName'] ?? json['serviceTypeName']) as String,
       roomName = json['assignedRoomName'] as String,
       travel = _minutes(json['estimatedTravelMinutes']),
       queue = _minutes(json['estimatedQueueWaitMinutes']),

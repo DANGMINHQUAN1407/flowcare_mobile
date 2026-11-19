@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import '../core/network/api_exceptions.dart';
 import '../services/patient_session_service.dart';
 import '../models/appointment_model.dart';
-import '../models/medical_record_model.dart';
 import '../services/appointment_service.dart';
 
 class HistoryProvider extends ChangeNotifier {
@@ -28,21 +27,16 @@ class HistoryProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _isRefreshing = false;
   String? _errorMessage;
-  int _selectedTabIndex = 0; // 0: Lịch hẹn, 1: Bệnh án & Đơn thuốc
+  int _selectedTabIndex = 0; // 0: Hồ sơ khám, 1: Lịch hẹn trực tuyến
   List<AppointmentModel> _appointments = [];
-  List<MedicalRecordModel> _medicalRecords = [];
+  String? _cancellingAppointmentId;
+  String? get cancellingAppointmentId => _cancellingAppointmentId;
 
   bool get isLoading => _isLoading;
   bool get isRefreshing => _isRefreshing;
   String? get errorMessage => _errorMessage;
   int get selectedTabIndex => _selectedTabIndex;
   List<AppointmentModel> get appointments => _appointments;
-  List<MedicalRecordModel> get medicalRecords => _medicalRecords;
-  bool get isEmpty =>
-      !_isLoading &&
-      (_selectedTabIndex == 0
-          ? _appointments.isEmpty
-          : _medicalRecords.isEmpty);
 
   void setTab(int index) {
     if (_selectedTabIndex != index) {
@@ -63,7 +57,6 @@ class HistoryProvider extends ChangeNotifier {
     if (boundId != null && patientId != boundId) patientId = boundId;
     if (patientId == null || patientId.isEmpty) {
       _appointments = [];
-      _medicalRecords = [];
       _isLoading = false;
       _isRefreshing = false;
       _errorMessage = null;
@@ -93,10 +86,6 @@ class HistoryProvider extends ChangeNotifier {
       list.sort((a, b) => b.scheduledTime.compareTo(a.scheduledTime));
       _appointments = list;
 
-      // Clinical records must come from an authorized clinical endpoint.
-      // Do not present generated diagnoses or prescriptions as this patient's data.
-      _medicalRecords = [];
-
       _errorMessage = null;
     } catch (e) {
       if (_disposed ||
@@ -120,10 +109,62 @@ class HistoryProvider extends ChangeNotifier {
     loadAppointments(patientId, phone: phone, patientName: patientName);
   }
 
+  Future<bool> cancelAppointment(String id, {String? reason}) async {
+    if (_cancellingAppointmentId != null) return false;
+    final sessionVersion = PatientSessionService().version;
+    final patientId = PatientSessionService().patientId;
+    if (patientId == null ||
+        !_appointments.any((item) => item.id == id && item.canCancel)) {
+      return false;
+    }
+    _cancellingAppointmentId = id;
+    _errorMessage = null;
+    _notify();
+    try {
+      final saved = await _appointmentService.cancelAppointment(
+        id,
+        reason: reason,
+      );
+      if (_disposed || sessionVersion != PatientSessionService().version) {
+        return false;
+      }
+      // Discard reads started before the committed cancellation.
+      _version++;
+      _isLoading = false;
+      _isRefreshing = false;
+      _appointments = _appointments
+          .map((item) => item.id == id ? saved : item)
+          .toList();
+      return true;
+    } catch (error) {
+      if (_disposed || sessionVersion != PatientSessionService().version) {
+        return false;
+      }
+      final stale =
+          error is ApiException &&
+          (error.codes.contains('APPOINTMENT_NOT_CANCELLABLE') ||
+              error.statusCode == 404);
+      if (stale) await loadAppointments(patientId, isRefresh: true);
+      if (!_disposed && sessionVersion == PatientSessionService().version) {
+        _errorMessage = stale
+            ? 'Lịch đã được tiếp nhận, đã hủy hoặc không còn khả dụng. Danh sách đã được cập nhật.'
+            : patientErrorMessage(
+                error,
+                fallback: 'Không xác nhận được hủy lịch. Tải lại lịch sử trước khi thử lại.',
+              );
+      }
+      return false;
+    } finally {
+      if (!_disposed && sessionVersion == PatientSessionService().version) {
+        _cancellingAppointmentId = null;
+        _notify();
+      }
+    }
+  }
+
   void logout() {
     _version++;
     _appointments = [];
-    _medicalRecords = [];
     _isLoading = false;
     _isRefreshing = false;
     _errorMessage = null;

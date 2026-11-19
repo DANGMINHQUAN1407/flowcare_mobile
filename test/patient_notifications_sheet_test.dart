@@ -10,8 +10,10 @@ import 'package:flowcare_mobile/screens/route/route_screen.dart';
 import 'package:flowcare_mobile/services/patient_session_service.dart';
 
 import 'fixtures/journey_fixtures.dart';
-import 'home_journey_provider_test.dart' show fakeHome, FakeEncounters;
+import 'home_journey_provider_test.dart'
+    show fakeHome, FakeEncounters, FakeRealtime;
 import 'patient_auth_test.dart' show FakePatientAuth;
+import 'route_optimization_widget_test.dart' show FakeOptimization;
 
 void main() {
   setUp(() {
@@ -132,6 +134,146 @@ void main() {
     await openSheet(tester);
     expect(find.byType(ListTile), findsWidgets);
     expect(tester.takeException(), isNull);
+  });
+
+  for (final replaced in [false, true]) {
+    testWidgets(
+      replaced
+          ? 'an old notification cannot open a replacement offer'
+          : 'tapping the offer notice opens that offer for review',
+      (tester) async {
+        ApiClient.setAuthToken('token');
+        final realtime = FakeRealtime();
+        final optimization = FakeOptimization();
+        addTearDown(optimization.close);
+        const id = 'visit';
+        final home = fakeHome(
+          encounters: FakeEncounters()
+            ..summary = summaryFixture(status: 'InProgress', encounterId: id),
+          realtime: realtime,
+        );
+        addTearDown(home.dispose);
+        await home.loadHomeData();
+        final visit = home.encounterSummary!.encounterId;
+        optimization
+          ..encounterId = visit
+          ..activePlanId = home.journey?.plan?.id;
+        home.startUpdates();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ChangeNotifierProvider<HomeProvider>.value(
+              value: home,
+              child: RouteScreen(optimizationService: optimization),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        realtime.callback!.call('RouteOfferAvailable', {
+          'encounterId': visit,
+          'id': 'proposal',
+          'offer': {'savedMinutes': 12},
+        });
+        realtime.callback!.call('NotificationReceived', {
+          'encounterId': visit,
+          'type': 'RouteOfferAvailable',
+          'payloadJson': '{"planId":"proposal","savedMinutes":12}',
+        });
+        expect(home.notices.length, 1);
+        if (replaced) optimization.proposalId = 'replacement';
+        await openSheet(tester);
+        await tester.tap(find.text('Có lộ trình nhanh hơn khoảng 12 phút'));
+        await tester.pumpAndSettle();
+        expect(optimization.calls, 0);
+        if (replaced) {
+          expect(find.text('Chấp nhận đề xuất'), findsNothing);
+          expect(
+            find.textContaining('trong thông báo đã hết hiệu lực'),
+            findsOneWidget,
+          );
+        } else {
+          expect(find.text('Dự kiến tiết kiệm 12 phút.'), findsOneWidget);
+          expect(find.text('Chấp nhận đề xuất'), findsOneWidget);
+        }
+        home.stopUpdates();
+      },
+    );
+  }
+
+  testWidgets(
+    'PaymentSuccess server notification shows payment message and deduplicates local notice',
+    (tester) async {
+      ApiClient.setAuthToken('token');
+      final realtime = FakeRealtime();
+      final home = fakeHome(
+        encounters: FakeEncounters()
+          ..summary = summaryFixture(
+            status: 'InProgress',
+            encounterId: 'visit',
+          ),
+        realtime: realtime,
+      );
+      addTearDown(home.dispose);
+      await home.loadHomeData();
+      final visit = home.encounterSummary!.encounterId;
+      home.startUpdates();
+
+      realtime.callback!.call('NotificationReceived', {
+        'id': 'notif-1',
+        'encounterId': visit,
+        'type': 'PaymentSuccess',
+        'message': 'Đã chuyển tiền thành công 16.000 ₫ qua PayOS.',
+        'payloadJson': '{"referenceId":"order-urine","orderCode":123}',
+      });
+      expect(home.notices, hasLength(1));
+      expect(
+        home.notices.single.message,
+        'Đã chuyển tiền thành công 16.000 ₫ qua PayOS.',
+      );
+
+      home.addPaymentSuccessNotice(
+        encounterId: visit,
+        orderId: 'order-urine',
+        message:
+            'Đã chuyển tiền thành công 16.000 ₫ cho Tổng phân tích nước tiểu.',
+      );
+      expect(home.notices, hasLength(1));
+      expect(
+        home.notices.single.message,
+        'Đã chuyển tiền thành công 16.000 ₫ cho Tổng phân tích nước tiểu.',
+      );
+      home.stopUpdates();
+    },
+  );
+
+  testWidgets('Mobile loads payment confirmations missed while disconnected', (
+    tester,
+  ) async {
+    ApiClient.setAuthToken('token');
+    final encounters = FakeEncounters()
+      ..summary = summaryFixture(status: 'InProgress', encounterId: 'visit');
+    final home = fakeHome(encounters: encounters, realtime: FakeRealtime());
+    addTearDown(home.dispose);
+    await home.loadHomeData();
+    final visit = home.encounterSummary!.encounterId;
+    encounters.notifications = [
+      {
+        'id': 'payment-history',
+        'encounterId': visit,
+        'type': 'PaymentSuccess',
+        'message': 'Đã chuyển tiền thành công qua PayOS.',
+        'payloadJson': '{"referenceId":"order-urine"}',
+      },
+    ];
+    home.startUpdates();
+    await tester.pump();
+    expect(home.notices.single.key, 'payment:$visit:order-urine');
+    expect(home.unreadNoticeCount, 1);
+    home.markNoticesRead();
+    await home.refreshJourney();
+    await tester.pump();
+    expect(home.notices, hasLength(1));
+    expect(home.unreadNoticeCount, 0);
+    home.stopUpdates();
   });
 
   testWidgets(

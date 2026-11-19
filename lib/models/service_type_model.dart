@@ -3,6 +3,7 @@ class ServiceTypeModel {
   final String name;
   final String? code;
   final String? description;
+  final String? serviceType;
   final double? price;
   final int? estimatedDurationMinutes;
 
@@ -11,6 +12,7 @@ class ServiceTypeModel {
     required this.name,
     this.code,
     this.description,
+    this.serviceType,
     this.price,
     this.estimatedDurationMinutes,
   });
@@ -63,6 +65,7 @@ class ServiceTypeModel {
       name: json['name']?.toString() ?? '',
       code: json['code']?.toString(),
       description: json['description']?.toString(),
+      serviceType: json['serviceType']?.toString(),
       price: json['price'] != null
           ? (json['price'] as num).toDouble()
           : (json['basePrice'] != null ? (json['basePrice'] as num).toDouble() : null),
@@ -78,6 +81,7 @@ class ServiceTypeModel {
       'name': name,
       'code': code,
       'description': description,
+      if (serviceType != null) 'serviceType': serviceType,
       'price': price,
       'estimatedDurationMinutes': estimatedDurationMinutes,
     };
