@@ -69,7 +69,7 @@ class MedicalPaymentService {
       if (item is! Map<String, dynamic>) {
         throw ApiException('Bảng kê thanh toán không hợp lệ.');
       }
-      if (item['purpose'] != 'MedicalOrder') continue;
+      if (!['MedicalOrder', 'PreExamOrder'].contains(item['purpose'])) continue;
       final id = item['referenceId'];
       final amount = item['outstanding'];
       final settled = item['isSettled'];

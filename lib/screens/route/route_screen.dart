@@ -83,7 +83,7 @@ class _RouteScreenState extends State<RouteScreen> {
     }
     return [
       for (final step in plan.steps)
-        if (step.medicalOrderId case final id?
+        if ((step.medicalOrderId ?? step.preExamOrderId) case final id?
             when id.isNotEmpty &&
                 ['pending', 'inqueue'].contains(step.status.toLowerCase()))
           (id: id, name: step.serviceTypeName),
@@ -94,6 +94,7 @@ class _RouteScreenState extends State<RouteScreen> {
     final plan = journey?.plan;
     return orders.length >= 2 &&
         plan != null &&
+        plan.isDoctorOrdered &&
         !plan.isLocked &&
         plan.acceptedOfferSavedMinutes == null &&
         _reviewedRoute !=
@@ -214,7 +215,7 @@ class _RouteScreenState extends State<RouteScreen> {
           ? optimizationPlan
           : null;
       final canReviewOffer = proposal == null
-          ? orders.length >= 2
+          ? paymentJourney?.plan?.isDoctorOrdered == true && orders.length >= 2
           : proposal.steps
                     .where((step) => step.medicalOrderId != null)
                     .length >=

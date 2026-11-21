@@ -68,6 +68,7 @@ class ParaclinicalPlanModel {
 class ParaclinicalStepModel {
   final String id;
   final String? medicalOrderId;
+  final String? preExamOrderId;
   final String? serviceCode;
   final String serviceTypeName;
   final String roomName;
@@ -95,6 +96,7 @@ class ParaclinicalStepModel {
   const ParaclinicalStepModel({
     required this.id,
     this.medicalOrderId,
+    this.preExamOrderId,
     this.serviceCode,
     required this.serviceTypeName,
     required this.roomName,
@@ -141,6 +143,7 @@ class ParaclinicalStepModel {
   ) => ParaclinicalStepModel(
     id: json['id']?.toString() ?? '',
     medicalOrderId: json['medicalOrderId'] as String?,
+    preExamOrderId: json['preExamOrderId'] as String?,
     serviceCode:
         _nonEmptyString(json['serviceCode']) ??
         _nonEmptyString(json['serviceTypeCode']),

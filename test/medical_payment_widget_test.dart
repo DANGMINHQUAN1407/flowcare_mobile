@@ -176,8 +176,26 @@ void main() {
       await tester.scrollUntilVisible(optimize, 150);
       await tester.pumpAndSettle();
       expect(payment, findsNothing);
-      expect(find.textContaining('1. Chụp X-Quang'), findsOneWidget);
-      expect(find.textContaining('2. Xét nghiệm máu'), findsOneWidget);
+      final currentRoute = find.widgetWithText(
+        ExpansionTile,
+        'Lộ trình hiện tại',
+      );
+      expect(currentRoute, findsOneWidget);
+      expect(find.text('1. Chụp X-Quang'), findsNothing);
+      final currentTitle = find.text('Lộ trình hiện tại');
+      await Scrollable.ensureVisible(
+        tester.element(currentTitle),
+        alignment: 0.5,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(currentTitle);
+      await tester.pumpAndSettle();
+      expect(find.text('1. Chụp X-Quang'), findsOneWidget);
+      expect(find.text('2. Xét nghiệm máu'), findsOneWidget);
+      await tester.tap(currentTitle);
+      await tester.pumpAndSettle();
+      await Scrollable.ensureVisible(tester.element(optimize), alignment: 0.5);
+      await tester.pumpAndSettle();
       await tester.tap(optimize);
       await tester.pumpAndSettle();
       expect(
@@ -190,7 +208,33 @@ void main() {
       final accept = find.text('Chấp nhận đề xuất');
       await tester.scrollUntilVisible(accept, 120);
       await tester.pumpAndSettle();
-      expect(find.text('Hiện tại 29 phút · Đề xuất 24 phút'), findsOneWidget);
+      final proposedRoute = find.widgetWithText(
+        ExpansionTile,
+        'Lộ trình đề xuất',
+      );
+      expect(proposedRoute, findsOneWidget);
+      expect(
+        find.descendant(of: currentRoute, matching: find.text('29 phút')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: proposedRoute, matching: find.text('24 phút')),
+        findsOneWidget,
+      );
+      expect(find.text('1. Xét nghiệm máu'), findsNothing);
+      final proposedTitle = find.text('Lộ trình đề xuất');
+      await Scrollable.ensureVisible(
+        tester.element(proposedTitle),
+        alignment: 0.5,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(proposedTitle);
+      await tester.pumpAndSettle();
+      expect(find.text('1. Xét nghiệm máu'), findsOneWidget);
+      expect(find.text('2. Chụp X-Quang'), findsOneWidget);
+      expect(find.text('1. Chụp X-Quang'), findsNothing);
+      await Scrollable.ensureVisible(tester.element(accept), alignment: 0.5);
+      await tester.pumpAndSettle();
       expect(payment, findsNothing);
       await tester.tap(accept);
       await tester.pumpAndSettle();
@@ -211,8 +255,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(payment, 120);
       await tester.pumpAndSettle();
-      expect(find.textContaining('Còn phải trả: 120.000'), findsOneWidget);
-      expect(find.textContaining('Còn phải trả: 100.000'), findsOneWidget);
+      expect(find.textContaining('Tổng còn phải trả: 220.000'), findsOneWidget);
+      expect(
+        find.widgetWithText(OutlinedButton, 'Thanh toán tổng phí'),
+        findsOneWidget,
+      );
 
       encounters.plan = ParaclinicalPlanModel.fromJson({
         ...offered,
@@ -240,166 +287,182 @@ void main() {
       balances['order-lab'] = 0;
       await home.refreshJourney(includeFinalized: true);
       await tester.pumpAndSettle();
-      expect(find.textContaining('Còn phải trả: 120.000'), findsNothing);
-      expect(find.textContaining('Còn phải trả: 100.000'), findsOneWidget);
+      expect(find.textContaining('Xét nghiệm máu · 120.000'), findsNothing);
+      expect(find.textContaining('Tổng còn phải trả: 100.000'), findsOneWidget);
 
       balances['order-xray'] = 0;
       await home.refreshJourney(includeFinalized: true);
       await tester.pumpAndSettle();
       expect(home.journey!.plan!.steps, hasLength(2));
       expect(payment, findsNothing);
-      expect(find.widgetWithText(OutlinedButton, 'Chụp X-Quang'), findsNothing);
+      expect(
+        find.widgetWithText(OutlinedButton, 'Thanh toán tổng phí'),
+        findsNothing,
+      );
     },
   );
 
-  testWidgets('An approved service offers counter payment and verifies PayOS', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(390, 760);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final session = PatientSessionService()
-      ..bindPatient(patientId: 'patient', userName: 'test');
-    ApiClient.setAuthToken('patient-token');
-    addTearDown(session.clearSession);
-    addTearDown(() => ApiClient.setAuthToken(null));
-    final plan = activeTimedPlanJson();
-    final xray = (plan['steps'] as List).first as Map<String, dynamic>;
-    xray['medicalOrderId'] = 'order-xray';
-    xray['serviceCode'] = 'XRAY';
-    xray['serviceName'] = xray.remove('serviceTypeName');
-    final home = fakeHome(
-      encounters: _ActiveEncounters()
-        ..summary = summaryFixture(status: 'InQueue')
-        ..plan = ParaclinicalPlanModel.fromJson(plan),
-    );
-    addTearDown(home.dispose);
-    await home.loadHomeData();
-    final calls = <http.Request>[];
-    var status = 'Pending';
-    var checkCode = 123;
-    final service = MedicalPaymentService(
-      api: ApiClient(
-        baseUrl: 'https://fixture.test/api/v1',
-        client: MockClient((request) async {
-          if (request.url.path == '/api/v1/encounters/visit-1/billing') {
-            return _billingResponse({
-              'order-xray': status == 'Paid' ? 0 : 80000,
-            });
-          }
-          calls.add(request);
-          return http.Response(
-            jsonEncode({
-              'success': true,
-              'data': {
-                'purpose': 'MedicalOrder',
-                'referenceId': 'order-xray',
-                'encounterId': 'visit-1',
-                'orderCode': checkCode,
-                'amount': 80000,
-                'status': status,
-                'qrCode': 'synthetic QR payload',
-                'expiresAt': DateTime.now()
-                    .add(const Duration(minutes: 15))
-                    .toIso8601String(),
-              },
-            }),
-            200,
-          );
-        }),
-      ),
-    );
-    addTearDown(service.close);
-    final optimization = FakeOptimization()..proposed = true;
-    addTearDown(optimization.close);
-
-    Widget screen(bool visible) => ChangeNotifierProvider<HomeProvider>.value(
-      value: home,
-      child: MaterialApp(
-        home: RouteScreen(
-          isVisible: visible,
-          optimizationService: optimization,
-          paymentService: service,
+  testWidgets(
+    'Two approved services share one counter total and one PayOS QR',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 760);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final session = PatientSessionService()
+        ..bindPatient(patientId: 'patient', userName: 'test');
+      ApiClient.setAuthToken('patient-token');
+      addTearDown(session.clearSession);
+      addTearDown(() => ApiClient.setAuthToken(null));
+      final plan = activeTimedPlanJson()..['isLocked'] = true;
+      final steps = (plan['steps'] as List).cast<Map<String, dynamic>>();
+      final xray = steps[0];
+      final lab = steps[1];
+      xray['medicalOrderId'] = 'order-xray';
+      xray['serviceCode'] = 'XRAY';
+      xray['serviceName'] = xray.remove('serviceTypeName');
+      lab['medicalOrderId'] = 'order-lab';
+      lab['serviceName'] = lab.remove('serviceTypeName');
+      final home = fakeHome(
+        encounters: _ActiveEncounters()
+          ..summary = summaryFixture(status: 'InQueue')
+          ..plan = ParaclinicalPlanModel.fromJson(plan),
+      );
+      addTearDown(home.dispose);
+      await home.loadHomeData();
+      final calls = <http.Request>[];
+      var status = 'Pending';
+      var checkCode = 123;
+      final service = MedicalPaymentService(
+        api: ApiClient(
+          baseUrl: 'https://fixture.test/api/v1',
+          client: MockClient((request) async {
+            if (request.url.path == '/api/v1/encounters/visit-1/billing') {
+              return _billingResponse({
+                'order-xray': status == 'Paid' ? 0 : 60000,
+                'order-lab': status == 'Paid' ? 0 : 20000,
+              });
+            }
+            calls.add(request);
+            return http.Response(
+              jsonEncode({
+                'success': true,
+                'data': {
+                  'purpose': 'Paraclinical',
+                  'orderIds': ['order-lab', 'order-xray'],
+                  'encounterId': 'visit-1',
+                  'orderCode': checkCode,
+                  'amount': 80000,
+                  if (status == 'Paid') 'paidAmount': 81000,
+                  'status': status,
+                  'qrCode': 'synthetic QR payload',
+                  'expiresAt': DateTime.now()
+                      .add(const Duration(minutes: 15))
+                      .toIso8601String(),
+                },
+              }),
+              200,
+            );
+          }),
         ),
-      ),
-    );
-    await tester.pumpWidget(screen(false));
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
-    await tester.pumpWidget(screen(true));
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
-    final paymentButton = find.widgetWithText(OutlinedButton, 'Chụp X-Quang');
-    await tester.scrollUntilVisible(paymentButton, 120);
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Còn phải trả: 80.000'), findsOneWidget);
-    expect(find.text('Dịch vụ cận lâm sàng'), findsNothing);
-    await tester.tap(paymentButton);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Quay lại quầy lễ tân'));
-    await tester.pumpAndSettle();
-    expect(find.text('Thanh toán tại quầy lễ tân'), findsOneWidget);
-    expect(find.textContaining('và thu phí Chụp X-Quang'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.textContaining('Còn phải trả: 80.000'),
-      ),
-      findsOneWidget,
-    );
-    expect(calls, isEmpty);
-    await tester.tap(find.text('Đã hiểu'));
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
+      );
+      addTearDown(service.close);
+      final optimization = FakeOptimization()..proposed = true;
+      addTearDown(optimization.close);
 
-    await tester.scrollUntilVisible(paymentButton, 120);
-    await tester.pumpAndSettle();
-    await tester.tap(paymentButton);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Thanh toán QR'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Số tiền thanh toán: 80.000'), findsOneWidget);
-    expect(
-      find.byType(QrImageView),
-      findsOneWidget,
-      reason: tester
-          .widgetList<Text>(
-            find.descendant(
-              of: find.byType(AlertDialog),
-              matching: find.byType(Text),
-            ),
-          )
-          .map((text) => text.data)
-          .join(' | '),
-    );
-    expect(
-      calls.single.url.path,
-      '/api/v1/encounters/visit-1/payos/payment-links',
-    );
-    expect(jsonDecode(calls.single.body), {
-      'purpose': 'MedicalOrder',
-      'referenceId': 'order-xray',
-    });
+      Widget screen(bool visible) => ChangeNotifierProvider<HomeProvider>.value(
+        value: home,
+        child: MaterialApp(
+          home: RouteScreen(
+            isVisible: visible,
+            optimizationService: optimization,
+            paymentService: service,
+          ),
+        ),
+      );
+      await tester.pumpWidget(screen(false));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      await tester.pumpWidget(screen(true));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      final paymentButton = find.widgetWithText(
+        OutlinedButton,
+        'Thanh toán tổng phí',
+      );
+      await tester.scrollUntilVisible(paymentButton, 120);
+      await tester.pumpAndSettle();
+      expect(paymentButton, findsOneWidget);
+      expect(find.textContaining('Tổng còn phải trả: 80.000'), findsOneWidget);
+      expect(find.text('Dịch vụ cận lâm sàng'), findsNothing);
+      await tester.tap(paymentButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Quay lại quầy lễ tân'));
+      await tester.pumpAndSettle();
+      expect(find.text('Thanh toán tại quầy lễ tân'), findsOneWidget);
+      expect(find.textContaining('tổng phí cận lâm sàng'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('Còn phải trả: 80.000'),
+        ),
+        findsOneWidget,
+      );
+      expect(calls, isEmpty);
+      await tester.tap(find.text('Đã hiểu'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
 
-    expect(find.text('Kiểm tra thanh toán'), findsNothing);
-    status = 'Paid';
-    checkCode = 999;
-    await tester.pump(const Duration(seconds: 3));
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(find.byType(QrImageView), findsOneWidget);
+      await tester.scrollUntilVisible(paymentButton, 120);
+      await tester.pumpAndSettle();
+      await tester.tap(paymentButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Thanh toán QR'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Số tiền thanh toán: 80.000'), findsOneWidget);
+      expect(
+        find.byType(QrImageView),
+        findsOneWidget,
+        reason: tester
+            .widgetList<Text>(
+              find.descendant(
+                of: find.byType(AlertDialog),
+                matching: find.byType(Text),
+              ),
+            )
+            .map((text) => text.data)
+            .join(' | '),
+      );
+      expect(
+        calls.single.url.path,
+        '/api/v1/encounters/visit-1/payos/payment-links',
+      );
+      expect(jsonDecode(calls.single.body), {
+        'purpose': 'Paraclinical',
+        'orderIds': ['order-xray', 'order-lab'],
+      });
 
-    checkCode = 123;
-    await tester.pump(const Duration(seconds: 3));
-    await tester.pumpAndSettle();
-    expect(calls.last.url.path, '/api/v1/payos/payment-links/123');
-    expect(find.byType(AlertDialog), findsNothing);
-    expect(find.byType(QrImageView), findsNothing);
-    const paidNotice = 'Đã chuyển tiền thành công 80.000\u00a0₫ cho Chụp X-Quang.';
-    expect(find.text(paidNotice), findsOneWidget);
-    expect(home.notices.map((n) => n.message), contains(paidNotice));
-    expect(paymentButton, findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.text('Kiểm tra thanh toán'), findsNothing);
+      status = 'Paid';
+      checkCode = 999;
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(QrImageView), findsOneWidget);
+
+      checkCode = 123;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(calls.last.url.path, '/api/v1/payos/payment-links/123');
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(QrImageView), findsNothing);
+      const paidNotice =
+          'Đã chuyển tiền thành công 81.000\u00a0₫ cho phí cận lâm sàng.';
+      expect(find.text(paidNotice), findsOneWidget);
+      expect(home.notices.map((n) => n.message), contains(paidNotice));
+      expect(paymentButton, findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

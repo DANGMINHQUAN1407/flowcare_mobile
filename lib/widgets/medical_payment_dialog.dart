@@ -62,7 +62,7 @@ Future<MedicalPaymentResult?> showMedicalPaymentReminder(
         title: const Text('Thanh toán tại quầy lễ tân'),
         content: Text(
           'Quay lại quầy lễ tân và cung cấp mã lượt khám '
-          '${encounterId.split('-').first.toUpperCase()} để nhân viên kiểm tra '
+          '$encounterId để nhân viên kiểm tra '
           'và thu tổng $serviceName. Sau khi thanh toán, quay lại phòng dịch vụ theo lộ trình.'
           '\n\nCòn phải trả: ${formatMedicalPaymentAmount(outstanding)}',
         ),
