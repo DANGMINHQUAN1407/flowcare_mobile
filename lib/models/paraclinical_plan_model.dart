@@ -135,7 +135,10 @@ class ParaclinicalStepModel {
   String get location => [
     if (roomName.isNotEmpty) roomName,
     if (building?.trim().isNotEmpty == true) building!,
-    if (floor?.trim().isNotEmpty == true) 'Tầng $floor',
+    if (floor?.trim().isNotEmpty == true)
+      floor!.trim().toLowerCase().startsWith('tầng ')
+          ? floor!.trim()
+          : 'Tầng ${floor!.trim()}',
   ].join(' · ');
 
   factory ParaclinicalStepModel.fromJson(

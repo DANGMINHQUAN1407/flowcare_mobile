@@ -100,7 +100,69 @@ class _NoFasterRoute extends RouteOptimizationService {
   }
 }
 
+class _AvailableOffer extends _NoFasterRoute {
+  int accepts = 0;
+
+  @override
+  Future<RouteOptimizationEligibility> eligibility(String encounterId, String patientId) async =>
+      RouteOptimizationEligibility.fromJson({
+        'canOptimize': true,
+        'remainingOrders': 2,
+        'activePlanId': 'plan-1',
+        'proposedPlanId': 'offer-1',
+        'offer': {'id': 'offer-1', 'encounterId': encounterId, 'status': 'Proposed', 'steps': []},
+      });
+
+  @override
+  Future<ParaclinicalPlanModel> accept(String encounterId, String patientId, String proposedPlanId) async {
+    accepts++;
+    return ParaclinicalPlanModel.fromJson({
+      'id': proposedPlanId, 'encounterId': encounterId, 'status': 'Active', 'steps': [],
+    });
+  }
+}
+
 void main() {
+  testWidgets('active route remains the offer baseline when a staff proposal is pending', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final session = PatientSessionService()..bindPatient(patientId: 'patient', userName: 'patient.test');
+    ApiClient.setAuthToken('test-token');
+    addTearDown(session.clearSession);
+    addTearDown(() => ApiClient.setAuthToken(null));
+    final optimization = _AvailableOffer();
+    addTearDown(optimization.close);
+    final plan = activeTimedPlanJson()..['encounterId'] = 'patient';
+    final steps = (plan['steps'] as List).cast<Map<String, dynamic>>();
+    steps[0]['medicalOrderId'] = 'order-xray';
+    steps[1]['medicalOrderId'] = 'order-lab';
+    plan['pendingProposal'] = {
+      'id': 'staff-proposal', 'encounterId': 'patient', 'status': 'Proposed',
+      'source': 'MedicalOrders', 'steps': steps,
+    };
+    final home = fakeHome(encounters: FakeEncounters()
+      ..summary = summaryFixture(status: 'InQueue', queueStatus: 'Done')
+      ..plan = ParaclinicalPlanModel.fromJson(plan));
+    addTearDown(home.dispose);
+    await home.loadHomeData();
+    await tester.pumpWidget(ChangeNotifierProvider<HomeProvider>.value(
+      value: home, child: MaterialApp(home: RouteScreen(optimizationService: optimization)),
+    ));
+    await tester.pumpAndSettle();
+    final optimize = find.text('Tối ưu lộ trình');
+    await tester.ensureVisible(optimize);
+    await tester.tap(optimize);
+    await tester.pumpAndSettle();
+    final accept = find.text('Chấp nhận đề xuất');
+    await tester.ensureVisible(accept);
+    await tester.tap(accept);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Xác nhận chấp nhận'));
+    await tester.pumpAndSettle();
+    expect(optimization.accepts, 1);
+  });
   for (final status in ['Active', 'Proposed']) {
     testWidgets(
       '$status route with two pending orders can request optimization before any offer exists',

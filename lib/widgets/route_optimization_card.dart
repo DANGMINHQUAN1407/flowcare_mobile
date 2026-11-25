@@ -382,10 +382,13 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
       _ when widget.requestedOfferId != null => 'Đề xuất trong thông báo đã hết hiệu lực. Mở tab Lộ trình để xem cập nhật mới nhất.',
       _ when checkedWithoutOffer && beforeApproval => 'Chưa có phương án tiết kiệm thời gian hơn. Phương án hiện tại vẫn đang chờ bác sĩ duyệt.',
       _ when checkedWithoutOffer => 'Đã tính lại theo hàng đợi hiện tại. Chưa có phương án đáp ứng ràng buộc của bác sĩ và mức tiết kiệm yêu cầu. Bạn tiếp tục theo lộ trình hiện tại.',
+      'TOO_FEW_STEPS' => 'Cần ít nhất hai y lệnh còn chờ để tính lại lộ trình.',
+      'NO_ACTIVE_PLAN' when beforeApproval =>
+        'Máy chủ chưa hỗ trợ tối ưu khi lộ trình đang chờ bác sĩ duyệt.',
+      'NO_ACTIVE_PLAN' => 'Chưa có lộ trình đang thực hiện.',
+      'ROUTE_OFFER_LIMIT' => 'Đã hết số lần đề xuất tối ưu cho lượt khám này.',
       _ when canRequest =>
         'Bấm Tối ưu lộ trình để kiểm tra phương án theo hàng đợi hiện tại.',
-      'TOO_FEW_STEPS' => 'Cần ít nhất hai y lệnh còn chờ để tính lại lộ trình.',
-      'NO_ACTIVE_PLAN' => 'Chưa có lộ trình đang thực hiện.',
       _ => 'Hiện chưa có đề xuất tối ưu.',
     };
     return Card(
@@ -410,12 +413,13 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
                 ),
               ],
             ),
-            if (_loading || _sending) const LinearProgressIndicator(),
+            if (_loading || _sending) ...[
+              const LinearProgressIndicator(),
+              const Text('Đang kiểm tra lộ trình, vui lòng chờ.'),
+            ],
             if (_notice != null) Text(_notice!),
             if (widget.isStale)
               const Text('Cập nhật lượt khám để xem đề xuất mới nhất.'),
-            if (_error != null)
-              Text(_error!, style: const TextStyle(color: AppColors.warning)),
             if (_routeLocked)
               const Text('Lộ trình đã được bác sĩ khóa.')
             else if (_routeAccepted)
@@ -442,25 +446,6 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
                   'Có hiệu lực đến ${TimeOfDay.fromDateTime(expires.toLocal()).format(context)}',
                 ),
             ],
-            if (currentPlan != null) ...[
-              const SizedBox(height: 8),
-              _RouteStepsSection(
-                key: ValueKey('current-route-${currentPlan.id}'),
-                title: currentPlan.isProposed
-                    ? 'Lộ trình chờ duyệt'
-                    : 'Lộ trình hiện tại',
-                plan: currentPlan,
-                totalMinutes: reviewedOffer?.currentTotalMinutes?.toDouble(),
-              ),
-              const SizedBox(height: 8),
-            ],
-            if (!validOffer &&
-                !_routeLocked &&
-                !_routeAccepted &&
-                !expired &&
-                !_loading &&
-                _error == null)
-              Semantics(liveRegion: true, child: Text(reason)),
             if (showOptimize)
               FilledButton(
                 onPressed: _canRespond ? () => _load(review: true) : null,
@@ -470,6 +455,14 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
                       : 'Nhờ tối ưu lộ trình',
                 ),
               ),
+            if (_error != null)
+              Text(_error!, style: const TextStyle(color: AppColors.warning))
+            else if (!validOffer &&
+                !_routeLocked &&
+                !_routeAccepted &&
+                !expired &&
+                !_loading)
+              Semantics(liveRegion: true, child: Text(reason)),
             if (reviewedOffer != null) ...[
               if (reviewedOffer.offer case final plan?)
                 _RouteStepsSection(
@@ -488,6 +481,18 @@ class _RouteOptimizationCardState extends State<RouteOptimizationCard> {
                 onPressed: enabled ? () => _decline(reviewedOffer) : null,
                 child: const Text('Từ chối đề xuất'),
               ),
+            ],
+            if (currentPlan != null) ...[
+              const SizedBox(height: 8),
+              _RouteStepsSection(
+                key: ValueKey('current-route-${currentPlan.id}'),
+                title: currentPlan.isProposed
+                    ? 'Lộ trình chờ duyệt'
+                    : 'Lộ trình hiện tại',
+                plan: currentPlan,
+                totalMinutes: reviewedOffer?.currentTotalMinutes?.toDouble(),
+              ),
+              const SizedBox(height: 8),
             ],
             if (appliedPlan?.acceptedOfferSavedMinutes case final minutes?)
               Text(

@@ -100,6 +100,54 @@ void main() {
     PatientSessionService().clearSession();
     ApiClient.setAuthToken(null);
   });
+  testWidgets('offer actions appear before the expanded current route', (
+    tester,
+  ) async {
+    final fake = FakeOptimization()..activePlanId = 'original';
+    addTearDown(fake.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: RouteOptimizationCard(
+              encounterId: 'visit',
+              patientId: 'patient',
+              service: fake,
+              currentPlan: const ParaclinicalPlanModel(
+                id: 'original',
+                encounterId: 'visit',
+                status: 'Active',
+                source: 'MedicalOrders',
+                nextAfterPlan: '',
+                steps: [
+                  ParaclinicalStepModel(
+                    id: 'step',
+                    serviceTypeName: 'Xét nghiệm',
+                    roomName: 'Phòng 1',
+                    stepOrder: 1,
+                    status: 'Pending',
+                  ),
+                ],
+              ),
+              onRouteReviewed: (_) {},
+              onChanged: () async {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lộ trình hiện tại'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tối ưu lộ trình'));
+    await tester.pumpAndSettle();
+    expect(fake.requests, 1);
+    expect(fake.calls, 0);
+    expect(
+      tester.getTopLeft(find.text('Chấp nhận đề xuất')).dy,
+      lessThan(tester.getTopLeft(find.text('Lộ trình hiện tại')).dy),
+    );
+  });
   for (final expired in [true, false]) {
     testWidgets(
       expired

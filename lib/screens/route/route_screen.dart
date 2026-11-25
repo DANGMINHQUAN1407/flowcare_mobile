@@ -8,6 +8,7 @@ import '../../models/patient_journey_model.dart';
 import '../../providers/home_provider.dart';
 import '../../widgets/medical_payment_dialog.dart';
 import '../../widgets/patient_notifications_sheet.dart';
+import '../../widgets/return_to_consultation_banner.dart';
 import '../../widgets/journey_timing_card.dart';
 import '../../widgets/journey_next_stop.dart';
 import '../../widgets/route_optimization_card.dart';
@@ -210,7 +211,9 @@ class _RouteScreenState extends State<RouteScreen> {
       final journey = home.journey;
       final paymentJourney = _paymentJourney(home);
       final orders = _plannedOrders(paymentJourney);
-      final optimizationPlan = journey?.plan?.pendingProposal ?? journey?.plan;
+      // Offers are measured against the running plan, not a separate staff
+      // proposal awaiting approval.
+      final optimizationPlan = journey?.plan;
       final proposal = optimizationPlan?.isProposed == true
           ? optimizationPlan
           : null;
@@ -704,6 +707,8 @@ class _RouteScreenState extends State<RouteScreen> {
               'Chưa đủ dữ liệu để hướng dẫn di chuyển. Hãy cập nhật lại hoặc hỏi nhân viên y tế.',
               style: TextStyle(fontSize: 13, height: 1.5),
             )
+          else if (!isStale && journey.shouldReturnToConsultation)
+            ReturnToConsultationBanner(summary: journey.summary)
           else
             JourneyNextStop(journey: journey, isStale: isStale),
         ],
