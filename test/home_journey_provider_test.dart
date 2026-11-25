@@ -9,14 +9,18 @@ import 'package:flowcare_mobile/models/patient_model.dart';
 import 'package:flowcare_mobile/models/patient_visit_model.dart';
 import 'package:flowcare_mobile/models/queue_ticket_model.dart';
 import 'package:flowcare_mobile/core/network/api_exceptions.dart';
+import 'package:flowcare_mobile/core/network/api_client.dart';
 import 'package:flowcare_mobile/providers/home_provider.dart';
 import 'package:flowcare_mobile/services/appointment_service.dart';
 import 'package:flowcare_mobile/services/encounter_service.dart';
 import 'package:flowcare_mobile/services/follow_up_service.dart';
+import 'package:flowcare_mobile/services/notification_service.dart';
 import 'package:flowcare_mobile/services/patient_realtime_service.dart';
 import 'package:flowcare_mobile/services/patient_service.dart';
 import 'package:flowcare_mobile/services/patient_session_service.dart';
 import 'package:flowcare_mobile/services/queue_service.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'fixtures/journey_fixtures.dart';
 
@@ -130,6 +134,7 @@ HomeProvider fakeHome({
   FakePatients? patients,
   FakeEncounters? encounters,
   FakeRealtime? realtime,
+  NotificationService? notificationService,
 }) => HomeProvider(
   patientService: patients ?? FakePatients(),
   appointmentService: FakeAppointments(),
@@ -137,6 +142,7 @@ HomeProvider fakeHome({
   queueService: FakeQueue(),
   followUpService: FakeFollowUps(),
   realtimeService: realtime ?? FakeRealtime(),
+  notificationService: notificationService,
   loadOnCreate: false,
 );
 
@@ -148,6 +154,50 @@ void main() {
     ),
   );
   tearDown(() => PatientSessionService().clearSession());
+
+  test(
+    'patient inbox loads and marks reminders read without a visit',
+    () async {
+      ApiClient.setAuthToken('token');
+      addTearDown(() => ApiClient.setAuthToken(null));
+      final paths = <String>[];
+      final client = ApiClient(
+        baseUrl: 'https://example.test/api/v1',
+        client: MockClient((request) async {
+          paths.add('${request.method} ${request.url.path}');
+          expect(request.headers['authorization'], 'Bearer token');
+          return http.Response(
+            request.method == 'GET'
+                ? '{"success":true,"data":[{"id":"reminder","patientId":"patient",'
+                      '"type":"FollowUpReminder","message":"Đến sớm để xét nghiệm",'
+                      '"createdAt":"2026-11-23T08:00:00Z"}]}'
+                : '{"success":true,"data":{}}',
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
+      addTearDown(client.close);
+      final home = fakeHome(
+        notificationService: NotificationService(apiClient: client),
+      );
+      addTearDown(home.dispose);
+      expect(home.encounterSummary, isNull);
+      await home.refreshInbox();
+      expect(home.notices.single.message, 'Đến sớm để xét nghiệm');
+      expect(home.notices.single.encounterId, isNull);
+      expect(home.unreadNoticeCount, 1);
+      expect(await home.markServerNotificationAsRead('reminder'), isTrue);
+      await home.refreshInbox();
+      expect(home.notices, hasLength(1));
+      expect(home.unreadNoticeCount, 0);
+      expect(paths, [
+        'GET /api/v1/patients/me/notifications',
+        'PATCH /api/v1/notifications/reminder/read',
+        'GET /api/v1/patients/me/notifications',
+      ]);
+    },
+  );
 
   test(
     'A finalized history visit remains selectable when active lookup is empty',

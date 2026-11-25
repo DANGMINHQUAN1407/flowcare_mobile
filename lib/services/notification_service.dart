@@ -5,7 +5,18 @@ class NotificationService {
   final ApiClient _apiClient;
 
   NotificationService({ApiClient? apiClient})
-      : _apiClient = apiClient ?? ApiClient();
+    : _apiClient = apiClient ?? ApiClient();
+
+  Future<List<NotificationModel>> getMyNotifications() async {
+    final response = await _apiClient.get<List<NotificationModel>>(
+      '/patients/me/notifications',
+      fromJsonT: (json) => (json as List<dynamic>)
+          .whereType<Map<String, dynamic>>()
+          .map(NotificationModel.fromJson)
+          .toList(),
+    );
+    return response.data ?? [];
+  }
 
   /// Retrieves notifications for a specific encounter ID.
   Future<List<NotificationModel>> getNotificationsByEncounter(
@@ -16,7 +27,10 @@ class NotificationService {
       fromJsonT: (json) {
         if (json is List) {
           return json
-              .map((item) => NotificationModel.fromJson(item as Map<String, dynamic>))
+              .map(
+                (item) =>
+                    NotificationModel.fromJson(item as Map<String, dynamic>),
+              )
               .toList();
         }
         return <NotificationModel>[];

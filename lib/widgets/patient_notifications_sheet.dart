@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'dart:async';
+
 import '../core/theme/app_colors.dart';
 import '../core/utils/hospital_time.dart';
 import '../models/follow_up_order_model.dart';
@@ -23,6 +25,7 @@ Future<void> showPatientNotifications(
   final session = PatientSessionService();
   final version = session.version;
   home.markNoticesRead();
+  unawaited(home.refreshInbox());
 
   final selected = await showModalBottomSheet<JourneyNotice>(
     context: context,
@@ -75,13 +78,25 @@ Future<void> showPatientNotifications(
                   Consumer<HomeProvider>(
                     builder: (context, home, _) => Column(
                       children: [
+                        if (home.inboxError != null)
+                          ListTile(
+                            title: const Text(
+                              'Chưa tải được thông báo từ bệnh viện',
+                            ),
+                            subtitle: Text(home.inboxError!),
+                            trailing: IconButton(
+                              tooltip: 'Tải lại thông báo',
+                              onPressed: home.refreshInbox,
+                              icon: const Icon(Icons.refresh),
+                            ),
+                          ),
                         Expanded(
                           child: home.notices.isEmpty
                               ? const Center(
                                   child: Padding(
                                     padding: EdgeInsets.all(24),
                                     child: Text(
-                                      'Chưa có thông báo mới trong phiên này.\nCác cập nhật về gọi số và tiến trình khám sẽ xuất hiện tại đây.',
+                                      'Chưa có thông báo mới.\nLời nhắc lịch hẹn và cập nhật lượt khám sẽ xuất hiện tại đây.',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         color: Colors.black54,
@@ -101,8 +116,8 @@ Future<void> showPatientNotifications(
                                     final notice = home.notices[index];
                                     return ListTile(
                                       leading: CircleAvatar(
-                                        backgroundColor:
-                                            AppColors.primary.withValues(alpha: 0.1),
+                                        backgroundColor: AppColors.primary
+                                            .withValues(alpha: 0.1),
                                         child: const Icon(
                                           Icons.notifications_outlined,
                                           color: AppColors.primary,
@@ -111,9 +126,11 @@ Future<void> showPatientNotifications(
                                       ),
                                       title: Text(
                                         notice.message,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 13,
-                                          fontWeight: FontWeight.w500,
+                                          fontWeight: notice.isRead
+                                              ? FontWeight.w500
+                                              : FontWeight.w700,
                                         ),
                                       ),
                                       subtitle: Text(
@@ -131,10 +148,47 @@ Future<void> showPatientNotifications(
                                               Icons.chevron_right,
                                               color: AppColors.primary,
                                             )
-                                          : null,
-                                      onTap: notice.proposedPlanId != null
-                                          ? () => Navigator.pop(context, notice)
-                                          : null,
+                                          : notice.isRead
+                                          ? null
+                                          : const Icon(
+                                              Icons.circle,
+                                              color: AppColors.primary,
+                                              size: 9,
+                                              semanticLabel: 'Chưa đọc',
+                                            ),
+                                      onTap:
+                                          notice.proposedPlanId == null &&
+                                              (notice.serverId == null ||
+                                                  notice.isRead)
+                                          ? null
+                                          : () async {
+                                              final id = notice.serverId;
+                                              if (id != null &&
+                                                  !notice.isRead) {
+                                                final marked = await home
+                                                    .markServerNotificationAsRead(
+                                                      id,
+                                                    );
+                                                if (!context.mounted) return;
+                                                if (!marked &&
+                                                    notice.proposedPlanId ==
+                                                        null) {
+                                                  ScaffoldMessenger.of(context)
+                                                      .showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text(
+                                                            'Chưa thể đánh dấu đã đọc.',
+                                                          ),
+                                                        ),
+                                                      );
+                                                }
+                                              }
+                                              if (context.mounted &&
+                                                  notice.proposedPlanId !=
+                                                      null) {
+                                                Navigator.pop(context, notice);
+                                              }
+                                            },
                                     );
                                   },
                                 ),
@@ -548,43 +602,6 @@ Widget _buildReminderActions(
                       : 'Cần cấp quyền thông báo trong Cài đặt thiết bị.',
                 ),
                 backgroundColor: granted ? Colors.green : Colors.orange,
-              ),
-            );
-          }
-        },
-      ),
-      const SizedBox(height: 8),
-      OutlinedButton.icon(
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          side: const BorderSide(color: Colors.grey),
-        ),
-        icon: const Icon(
-          Icons.sync_rounded,
-          color: Colors.black87,
-          size: 20,
-        ),
-        label: const Text(
-          'Kiểm tra & Gửi lại nhắc nhở từ Server (API)',
-          style: TextStyle(
-            color: Colors.black87,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        onPressed: () async {
-          final ok = await home.runBackendRemindersCheck();
-          if (sheetContext.mounted) {
-            ScaffoldMessenger.of(sheetContext).showSnackBar(
-              SnackBar(
-                content: Text(
-                  ok
-                      ? '✓ Đã yêu cầu Backend kiểm tra và cập nhật nhắc nhở!'
-                      : 'Không thể kết nối đến server nhắc nhở.',
-                ),
-                backgroundColor: ok ? AppColors.primary : Colors.red,
               ),
             );
           }

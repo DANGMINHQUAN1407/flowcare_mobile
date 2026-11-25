@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import '../models/appointment_model.dart';
 import '../models/encounter_summary_model.dart';
 import '../models/follow_up_order_model.dart';
+import '../models/notification_model.dart';
 import '../models/paraclinical_plan_model.dart';
 import '../models/patient_journey_model.dart';
 import '../models/patient_model.dart';
@@ -28,7 +29,7 @@ import '../services/queue_service.dart';
 class JourneyNotice {
   final String key;
   final String message;
-  final String? encounterId, proposedPlanId;
+  final String? encounterId, proposedPlanId, serverId;
   final DateTime createdAt;
   bool isRead;
   JourneyNotice(
@@ -36,6 +37,7 @@ class JourneyNotice {
     this.message, {
     this.encounterId,
     this.proposedPlanId,
+    this.serverId,
     DateTime? createdAt,
     this.isRead = false,
   }) : createdAt = createdAt ?? DateTime.now();
@@ -92,6 +94,9 @@ class HomeProvider extends ChangeNotifier {
   FollowUpOrderModel? _latestFollowUpOrder;
   List<PatientVisitModel> _visits = [];
   final List<JourneyNotice> _notices = [];
+  Future<void>? _inboxLoad;
+  String? _inboxError;
+  final Set<String> _readingNotices = {};
   final Set<String> _loadingPaymentNotices = {};
   Timer? _pollTimer, _eventDebounce;
 
@@ -112,6 +117,7 @@ class HomeProvider extends ChangeNotifier {
   FollowUpOrderModel? get latestFollowUpOrder => _latestFollowUpOrder;
   List<PatientVisitModel> get visits => List.unmodifiable(_visits);
   List<JourneyNotice> get notices => List.unmodifiable(_notices);
+  String? get inboxError => _inboxError;
   int get unreadNoticeCount => _notices.where((n) => !n.isRead).length;
   String? get patientId => _sessionService.patientId;
   String get currentPhone => _sessionService.currentPhone;
@@ -181,6 +187,7 @@ class HomeProvider extends ChangeNotifier {
         _clearData();
         return;
       }
+      unawaited(refreshInbox());
       final profile = await read(_patientService.getMyProfile, 'Hồ sơ');
       if (!_isCurrent(version)) return;
       if (!failures.containsKey('Hồ sơ')) _patient = profile;
@@ -287,10 +294,14 @@ class HomeProvider extends ChangeNotifier {
   Future<void> scheduleLocalDeviceReminders() async {
     try {
       if (_latestFollowUpOrder != null) {
-        await _localReminderService.scheduleFollowUpReminders(_latestFollowUpOrder!);
+        await _localReminderService.scheduleFollowUpReminders(
+          _latestFollowUpOrder!,
+        );
       }
       if (_appointmentCheck?.appointment != null) {
-        await _localReminderService.scheduleAppointmentReminders(_appointmentCheck!.appointment!);
+        await _localReminderService.scheduleAppointmentReminders(
+          _appointmentCheck!.appointment!,
+        );
       }
     } catch (e) {
       debugPrint('Error scheduling local reminders: $e');
@@ -301,16 +312,50 @@ class HomeProvider extends ChangeNotifier {
     return await _notificationService.runRemindersCheck();
   }
 
+  bool get _canReadInbox =>
+      !_disposed &&
+      _sessionService.version == _boundSessionVersion &&
+      _sessionService.isAuthenticated &&
+      !_sessionService.isDemo &&
+      ApiClient.authToken?.isNotEmpty == true;
+
+  Future<void> refreshInbox() {
+    if (!_canReadInbox) return Future.value();
+    return _inboxLoad ??= _loadInbox().whenComplete(() => _inboxLoad = null);
+  }
+
+  Future<void> _loadInbox() async {
+    try {
+      final notifications = await _notificationService.getMyNotifications();
+      if (!_canReadInbox) return;
+      _inboxError = null;
+      for (final notification in notifications) {
+        _mergeServerNotice(notification, notify: false);
+      }
+    } catch (error) {
+      if (!_canReadInbox) return;
+      _inboxError = patientErrorMessage(error);
+    }
+    _notify();
+  }
+
   Future<bool> markServerNotificationAsRead(String notificationId) async {
-    final success = await _notificationService.markAsRead(notificationId);
-    if (success) {
-      final index = _notices.indexWhere((n) => n.key.contains(notificationId));
-      if (index >= 0) {
-        _notices[index].isRead = true;
+    if (!_canReadInbox || !_readingNotices.add(notificationId)) return false;
+    try {
+      final success = await _notificationService.markAsRead(notificationId);
+      if (!_canReadInbox) return false;
+      if (success) {
+        for (final notice in _notices.where(
+          (n) => n.serverId == notificationId,
+        )) {
+          notice.isRead = true;
+        }
         _notify();
       }
+      return success;
+    } finally {
+      _readingNotices.remove(notificationId);
     }
-    return success;
   }
 
   Future<void> _readJourney(
@@ -576,41 +621,54 @@ class HomeProvider extends ChangeNotifier {
       );
       return;
     }
-    if (payload['encounterId'] != encounterId) return;
-    final type = payload['type']?.toString();
-    final rawMessage = payload['message']?.toString().trim();
-    if (type == 'PaymentSuccess') {
-      Object? details = payload['payloadJson'];
-      if (details is String) {
-        try {
-          details = jsonDecode(details);
-        } on FormatException {
-          details = null;
-        }
-      }
-      final ref = details is Map
-          ? (details['referenceId'] ?? details['orderCode'])?.toString()
-          : null;
-      final key = (ref != null && ref.isNotEmpty)
-          ? 'payment:$encounterId:$ref'
-          : 'notification:${payload['id'] ?? DateTime.now().millisecondsSinceEpoch}';
-      _addNotice(
-        key,
-        (rawMessage != null && rawMessage.isNotEmpty)
-            ? rawMessage
-            : 'Đã chuyển tiền thành công qua PayOS.',
-        encounterId: encounterId,
-        createdAt: DateTime.tryParse(payload['createdAt']?.toString() ?? ''),
-        isRead: payload['isRead'] == true,
-      );
+    if (payload['encounterId'] != encounterId &&
+        (payload['encounterId'] != null || payload['patientId'] != patientId)) {
       return;
     }
+    _mergeServerNotice(
+      NotificationModel.fromJson(Map<String, dynamic>.from(payload)),
+    );
+  }
+
+  void _mergeServerNotice(
+    NotificationModel notification, {
+    bool notify = true,
+  }) {
+    if (notification.patientId != null && notification.patientId != patientId)
+      return;
+    final encounterId = notification.encounterId;
+    final details = notification.parsedPayload;
+    final isPayment = notification.type == 'PaymentSuccess';
+    final ref = (details?['referenceId'] ?? details?['orderCode'])?.toString();
+    final offerId = notification.type == 'RouteOfferAvailable'
+        ? (details?['planId']?.toString())
+        : null;
+    final message = notification.message?.trim() ?? '';
+    final title = notification.title?.trim() ?? '';
+    final serverId = notification.id.isEmpty ? null : notification.id;
+    final key = switch ((encounterId, offerId, ref)) {
+      (final id?, final plan?, _) when plan.isNotEmpty =>
+        'route-offer:$id:$plan',
+      (final id?, _, final reference?) when isPayment && reference.isNotEmpty =>
+        'payment:$id:$reference',
+      _ =>
+        'notification:${serverId ?? notification.createdAt.microsecondsSinceEpoch}',
+    };
     _addNotice(
-      'notification:${payload['id'] ?? DateTime.now().millisecondsSinceEpoch}',
-      (rawMessage != null && rawMessage.isNotEmpty)
-          ? rawMessage
+      key,
+      message.isNotEmpty
+          ? message
+          : title.isNotEmpty
+          ? title
+          : isPayment
+          ? 'Đã chuyển tiền thành công qua PayOS.'
           : 'Có thông báo mới từ bệnh viện.',
       encounterId: encounterId,
+      proposedPlanId: offerId,
+      serverId: serverId,
+      createdAt: notification.createdAt,
+      isRead: notification.isRead,
+      notify: notify,
     );
   }
 
@@ -649,12 +707,14 @@ class HomeProvider extends ChangeNotifier {
     final key = 'payment:$encounterId:$orderId';
     final existing = _notices.indexWhere((n) => n.key == key);
     if (existing >= 0) {
+      final previous = _notices[existing];
       _notices[existing] = JourneyNotice(
         key,
         message,
         encounterId: encounterId,
-        createdAt: _notices[existing].createdAt,
-        isRead: _notices[existing].isRead,
+        serverId: previous.serverId,
+        createdAt: previous.createdAt,
+        isRead: previous.isRead,
       );
       _notify();
       return;
@@ -667,29 +727,38 @@ class HomeProvider extends ChangeNotifier {
     String message, {
     String? encounterId,
     String? proposedPlanId,
+    String? serverId,
     DateTime? createdAt,
     bool isRead = false,
+    bool notify = true,
   }) {
-    if (_notices.any((n) => n.key == key)) return;
+    final existing = _notices.indexWhere((n) => n.key == key);
+    if (existing >= 0 && serverId == null) return;
+    final previous = existing < 0 ? null : _notices.removeAt(existing);
     final notice = JourneyNotice(
       key,
-      message,
+      key.startsWith('payment:') ? previous?.message ?? message : message,
       encounterId: encounterId,
       proposedPlanId: proposedPlanId,
+      serverId: serverId,
       createdAt: createdAt,
-      isRead: isRead,
+      isRead:
+          isRead ||
+          (previous?.serverId == serverId && previous?.isRead == true),
     );
     final index = _notices.indexWhere(
       (item) => !item.createdAt.isAfter(notice.createdAt),
     );
     _notices.insert(index < 0 ? _notices.length : index, notice);
-    if (_notices.length > 30) _notices.removeLast();
-    _notify();
+    if (_notices.length > 50) _notices.removeLast();
+    if (notify) _notify();
   }
 
   void markNoticesRead() {
     for (final notice in _notices) {
-      notice.isRead = true;
+      if (notice.serverId == null || notice.encounterId != null) {
+        notice.isRead = true;
+      }
     }
     _notify();
   }
@@ -712,6 +781,7 @@ class HomeProvider extends ChangeNotifier {
     _latestFollowUpOrder = null;
     _visits = [];
     _notices.clear();
+    _inboxError = null;
     _clearJourney();
   }
 
