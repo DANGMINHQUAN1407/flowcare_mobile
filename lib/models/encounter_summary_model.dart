@@ -108,6 +108,8 @@ class EncounterSummaryModel {
   final String? ticketCode;
   final String? patientPhone;
   final NursingIntakeProgressModel? nursingIntake;
+  final bool isFollowUp;
+  final List<String>? blockingPreExamOrderIds;
 
   const EncounterSummaryModel({
     required this.encounterId,
@@ -127,6 +129,8 @@ class EncounterSummaryModel {
     this.ticketCode,
     this.patientPhone,
     this.nursingIntake,
+    this.isFollowUp = false,
+    this.blockingPreExamOrderIds,
   });
 
   bool get isFinalized =>
@@ -169,6 +173,10 @@ class EncounterSummaryModel {
       doctorName: json['doctorName']?.toString(),
       ticketCode: json['ticketCode']?.toString(),
       patientPhone: json['patientPhone']?.toString(),
+      isFollowUp: json['isFollowUp'] == true,
+      blockingPreExamOrderIds: (json['blockingPreExamOrderIds'] as List?)
+          ?.whereType<String>()
+          .toList(),
       nursingIntake: json['nursingIntake'] is Map<String, dynamic>
           ? NursingIntakeProgressModel.fromJson(
               json['nursingIntake'] as Map<String, dynamic>,
@@ -188,6 +196,8 @@ class EncounterSummaryModel {
       'estimatedWaitMinutes': estimatedWaitMinutes,
       'estimatedCompletionTime': estimatedCompletionTime?.toIso8601String(),
       'queueNumber': queueNumber,
+      'isFollowUp': isFollowUp,
+      'blockingPreExamOrderIds': blockingPreExamOrderIds,
       'queueStatus': queueStatus,
       'checkInTime': checkInTime?.toIso8601String(),
       'preExamOrders': preExamOrders.map((o) => o.toJson()).toList(),

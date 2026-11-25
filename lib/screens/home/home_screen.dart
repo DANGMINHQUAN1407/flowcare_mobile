@@ -12,6 +12,7 @@ import '../../providers/booking_provider.dart';
 import '../../widgets/error_state_widget.dart';
 import '../../widgets/loading_state_widget.dart';
 import '../../widgets/patient_notifications_sheet.dart';
+import '../../widgets/return_to_consultation_banner.dart';
 import '../../core/utils/hospital_time.dart';
 import 'pregnancy_tracker_sheet.dart';
 
@@ -702,6 +703,7 @@ class HomeScreen extends StatelessWidget {
             ?.replaceFirst(RegExp(r'^\s*STT\s*#?\s*', caseSensitive: false), '')
             .replaceAll('#', '')
             .trim();
+    final hasTicket = rawTicket != null && rawTicket.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -761,7 +763,7 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              if (rawTicket != null && rawTicket.isNotEmpty)
+              if (hasTicket)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -836,32 +838,37 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    'Chờ ước tính',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
+              if (!hasTicket)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text(
+                      'Chờ ước tính',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    calculatedWait != null
-                        ? '~$calculatedWait phút'
-                        : 'Chưa có',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.success,
+                    const SizedBox(height: 2),
+                    Text(
+                      calculatedWait != null
+                          ? '~$calculatedWait phút'
+                          : 'Chưa có',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.success,
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
             ],
           ),
-          if (encounter.preExamOrders.isNotEmpty) ...[
+          if (!homeProvider.isJourneyStale &&
+              homeProvider.journey?.shouldReturnToConsultation == true) ...[
+            const SizedBox(height: 12),
+            ReturnToConsultationBanner(summary: encounter),
+          ] else if (encounter.preExamOrders.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

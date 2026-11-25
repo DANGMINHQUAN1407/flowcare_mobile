@@ -44,6 +44,29 @@ class PatientJourney {
   const PatientJourney._(this.summary, this.plan, this.steps);
 
   bool get isFinalized => summary.isFinalized;
+  bool get shouldReturnToConsultation =>
+      summary.isFollowUp &&
+      !summary.isEmergency &&
+      !isFinalized &&
+      plan?.isDoctorOrdered != true &&
+      plan?.isProposed != true &&
+      summary.preExamOrders.any(
+        (order) => order.status.toLowerCase() == 'completed',
+      ) &&
+      (summary.blockingPreExamOrderIds?.isEmpty ??
+          summary.preExamOrders.every(
+            (order) => const {
+              'completed',
+              'cancelled',
+            }.contains(order.status.toLowerCase()),
+          )) &&
+      const {
+        'waiting',
+        'called',
+      }.contains(summary.queueStatus?.toLowerCase()) &&
+      (summary.queueNumber != null ||
+          summary.ticketCode?.trim().isNotEmpty == true) &&
+      summary.roomName?.trim().isNotEmpty == true;
   JourneyTiming? get timing =>
       plan == null ? null : JourneyTiming.fromPlan(plan!);
   int get completedCount =>

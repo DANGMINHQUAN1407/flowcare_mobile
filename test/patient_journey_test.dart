@@ -1,10 +1,41 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowcare_mobile/core/utils/hospital_time.dart';
+import 'package:flowcare_mobile/models/encounter_summary_model.dart';
 import 'package:flowcare_mobile/models/patient_journey_model.dart';
 
 import 'fixtures/journey_fixtures.dart';
 
 void main() {
+  test(
+    'follow-up return guidance requires cleared results and a live ticket',
+    () {
+      final json =
+          summaryFixture(status: 'InQueue', queueStatus: 'Waiting').toJson()
+            ..['isFollowUp'] = true
+            ..['preExamOrders'] = [
+              {'id': 'test', 'status': 'Completed'},
+            ]
+            ..['blockingPreExamOrderIds'] = <String>[];
+      bool shouldReturn([Map<String, dynamic> changes = const {}]) =>
+          PatientJourney.build(
+            EncounterSummaryModel.fromJson({...json, ...changes}),
+            null,
+          ).shouldReturnToConsultation;
+
+      expect(shouldReturn(), isTrue);
+      expect(shouldReturn({'queueStatus': 'Called'}), isTrue);
+      expect(shouldReturn({'queueStatus': 'Done'}), isFalse);
+      expect(
+        shouldReturn({
+          'blockingPreExamOrderIds': ['test'],
+        }),
+        isFalse,
+      );
+      expect(shouldReturn({'queueNumber': null}), isFalse);
+      expect(shouldReturn({'isFollowUp': false}), isFalse);
+    },
+  );
+
   test(
     'Finalized visit displays real doctor-ordered services and no waiting step',
     () {
