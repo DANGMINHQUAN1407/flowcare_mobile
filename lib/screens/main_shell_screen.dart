@@ -11,6 +11,7 @@ import 'history/history_screen.dart';
 import 'home/home_screen.dart';
 import 'profile/profile_screen.dart';
 import 'route/route_screen.dart';
+import 'chat/patient_chat_screen.dart';
 
 class MainShellScreen extends StatefulWidget {
   final int initialTabIndex;
@@ -100,7 +101,35 @@ class _MainShellScreenState extends State<MainShellScreen>
     ];
 
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: screens),
+      body: Column(
+        children: [
+          Expanded(
+            child: IndexedStack(index: _currentIndex, children: screens),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: TextButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PatientChatScreen(),
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.textPrimary,
+                  backgroundColor: AppColors.primaryLight,
+                ),
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text(
+                  'Trợ lý',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: AppColors.surface,

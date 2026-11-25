@@ -2,6 +2,7 @@ package com.example.flowcare_mobile
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -14,6 +15,19 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "flowcare/emergency")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "dial") {
+                    result.notImplemented()
+                } else {
+                    try {
+                        startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:115")))
+                        result.success(null)
+                    } catch (failure: Exception) {
+                        result.error("DIAL_UNAVAILABLE", "Could not open the phone app.", null)
+                    }
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "flowcare/result_files")
             .setMethodCallHandler { call, result ->
                 if (call.method != "save") {
