@@ -27,22 +27,8 @@ class PregnancyTrackerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final weeks = patient?.gestationalWeeks ?? 16;
-    final days = patient?.gestationalDays ?? 3;
-    final edd = patient?.edd ?? '25/12/2026';
-    final lmp = patient?.lmp ?? '15/03/2026';
-    final para = patient?.para ?? 'G1 P0 A0 L0';
+    final weeks = patient?.gestationalWeeks;
     final milestones = PregnancyMilestoneModel.standardMilestones;
-
-    // Determine current trimester
-    String trimester;
-    if (weeks <= 13) {
-      trimester = 'Tam cá nguyệt 1 (3 tháng đầu)';
-    } else if (weeks <= 27) {
-      trimester = 'Tam cá nguyệt 2 (3 tháng giữa)';
-    } else {
-      trimester = 'Tam cá nguyệt 3 (3 tháng cuối)';
-    }
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.88,
@@ -98,121 +84,6 @@ class PregnancyTrackerSheet extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Hero Gestational Banner
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFE879F9), Color(0xFFF43F5E)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFFF43F5E).withValues(alpha: 0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.25),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                trimester,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const Spacer(),
-                            const Icon(Icons.favorite_rounded, color: Colors.white, size: 18),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          'Tuần $weeks + $days ngày',
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 4,
-                          children: [
-                            Text(
-                              'Dự sinh (EDD): $edd',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white.withValues(alpha: 0.95),
-                              ),
-                            ),
-                            Text(
-                              '• Kinh cuối (LMP): $lmp',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white.withValues(alpha: 0.95),
-                              ),
-                            ),
-                            Text(
-                              '• PARA: $para',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white.withValues(alpha: 0.95),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        // Progress bar (40 weeks total)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: LinearProgressIndicator(
-                                value: (weeks / 40.0).clamp(0.0, 1.0),
-                                minHeight: 8,
-                                backgroundColor: Colors.white.withValues(alpha: 0.3),
-                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Tuần 0', style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.8))),
-                                Text('Hành trình: ${((weeks / 40.0) * 100).toInt()}%', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                                Text('Tuần 40 (Sinh)', style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.8))),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
                   // Action: Book appointment for current milestone
                   SizedBox(
                     width: double.infinity,
@@ -256,8 +127,8 @@ class PregnancyTrackerSheet extends StatelessWidget {
                   const SizedBox(height: 16),
 
                   ...milestones.map((m) {
-                    final isPassed = weeks > m.week;
-                    final isCurrent = (weeks >= m.week - 2) && (weeks <= m.week + 2);
+                    final isPassed = weeks != null && weeks > m.week;
+                    final isCurrent = weeks != null && (weeks >= m.week - 2) && (weeks <= m.week + 2);
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),

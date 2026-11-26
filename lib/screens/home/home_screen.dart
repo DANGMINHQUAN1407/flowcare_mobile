@@ -14,7 +14,6 @@ import '../../widgets/loading_state_widget.dart';
 import '../../widgets/patient_notifications_sheet.dart';
 import '../../widgets/return_to_consultation_banner.dart';
 import '../../core/utils/hospital_time.dart';
-import 'pregnancy_tracker_sheet.dart';
 
 class HomeScreen extends StatelessWidget {
   final void Function(int tabIndex)? onNavigateToTab;
@@ -68,16 +67,6 @@ class HomeScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     _buildQuickActionsGrid(context, homeProvider),
-
-                    const SizedBox(height: 24),
-
-                    // 4. Cẩm nang Mẹ & Bé / Mốc khám thai quan trọng
-                    _buildMaternityCareCard(context, patient),
-
-                    const SizedBox(height: 24),
-
-                    // 5. Emergency hotline banner
-                    _buildEmergencyHotlineBanner(context),
 
                     const SizedBox(height: 30),
                   ],
@@ -530,8 +519,8 @@ class HomeScreen extends StatelessWidget {
     BuildContext context,
     PatientModel patient,
   ) {
-    final weeks = patient.gestationalWeeks ?? 16;
-    final days = patient.gestationalDays ?? 0;
+    final weeks = patient.gestationalWeeks;
+    final days = patient.gestationalDays;
     final edd = patient.edd ?? 'Chưa xác định';
 
     return Container(
@@ -592,11 +581,7 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               InkWell(
-                onTap: () => PregnancyTrackerSheet.show(
-                  context,
-                  patient: patient,
-                  onBookAppointment: () => onNavigateToTab?.call(1),
-                ),
+                onTap: () => onNavigateToTab?.call(4),
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -635,7 +620,8 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Tuần $weeks + $days ngày',
+                    weeks == null ? 'Chưa ghi nhận tuổi thai' :
+                        days == null ? 'Tuần $weeks' : 'Tuần $weeks + $days ngày',
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
@@ -1014,7 +1000,6 @@ class HomeScreen extends StatelessWidget {
     BuildContext context,
     HomeProvider homeProvider,
   ) {
-    final patient = homeProvider.patient;
     final followUp = homeProvider.latestFollowUpOrder;
     return Column(
       children: [
@@ -1033,16 +1018,12 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _buildActionCard(
-                title: 'Theo dõi thai kỳ',
-                subtitle: 'Tuần thai & Mốc khám',
+                title: 'Hồ sơ thai kỳ',
+                subtitle: 'Thông tin thai sản',
                 icon: Icons.pregnant_woman_rounded,
                 iconColor: AppColors.maternityPink,
                 iconBgColor: AppColors.maternityPinkLight,
-                onTap: () => PregnancyTrackerSheet.show(
-                  context,
-                  patient: patient,
-                  onBookAppointment: () => _openNewBookingTab(context),
-                ),
+                onTap: () => onNavigateToTab?.call(4),
               ),
             ),
           ],
@@ -1182,126 +1163,4 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMaternityCareCard(BuildContext context, PatientModel? patient) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.maternityPinkLight.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.maternityPink.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppColors.maternityPink.withValues(alpha: 0.3),
-              ),
-            ),
-            child: const Icon(
-              Icons.baby_changing_station_rounded,
-              color: AppColors.maternityPink,
-              size: 26,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Cẩm nang Thai Kỳ & Sinh nở',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  'Khám thai định kỳ giúp phát hiện sớm 99% bất thường thai nhi.',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                InkWell(
-                  onTap: () => PregnancyTrackerSheet.show(
-                    context,
-                    patient: patient,
-                    onBookAppointment: () => onNavigateToTab?.call(1),
-                  ),
-                  child: const Text(
-                    'Xem các mốc khám thai chuẩn >',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmergencyHotlineBanner(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.emergencyLight,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.emergency.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.phone_in_talk_rounded,
-              color: AppColors.emergency,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Cấp cứu Sản khoa 24/7',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.emergency,
-                  ),
-                ),
-                SizedBox(height: 1),
-                Text(
-                  'Hotline tiếp đón khẩn cấp: 1900 6868',
-                  style: TextStyle(fontSize: 11, color: AppColors.textPrimary),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

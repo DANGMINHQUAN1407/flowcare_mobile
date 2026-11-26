@@ -88,7 +88,7 @@ void main() {
     expect(find.textContaining('Xin chào'), findsOneWidget);
     expect(find.text('Bệnh viện Phụ Sản Thông Minh'), findsOneWidget);
     expect(find.text('Đặt lịch khám'), findsWidgets);
-    expect(find.text('Theo dõi thai kỳ'), findsOneWidget);
+    expect(find.text('Hồ sơ thai kỳ'), findsOneWidget);
   });
 
   testWidgets('BookingScreen renders OB/GYN categories and step wizard', (
