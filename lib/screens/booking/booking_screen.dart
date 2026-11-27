@@ -1523,14 +1523,6 @@ class _BookingScreenState extends State<BookingScreen> {
         'color': AppColors.primary,
         'bgColor': AppColors.primaryLight,
       },
-      {
-        'id': 'other',
-        'title': 'Sản - Phụ khoa khác',
-        'subtitle': 'Cận lâm sàng & Tiền sản',
-        'icon': Icons.medical_services_outlined,
-        'color': AppColors.secondary,
-        'bgColor': AppColors.secondaryLight,
-      },
     ];
 
     return Row(
@@ -1682,18 +1674,15 @@ class _BookingScreenState extends State<BookingScreen> {
     BookingProvider bookingProvider,
   ) {
     final isPrenatal = bookingProvider.selectedCategory == 'prenatal';
-    final isGyn = bookingProvider.selectedCategory == 'gynecology';
 
     final quickSuggestions = isPrenatal
         ? ['Khám thai định kỳ', 'Đau bụng âm ỉ', 'Nghén nhiều / Mệt mỏi']
-        : (isGyn
-              ? [
-                  'Khám phụ khoa định kỳ',
-                  'Rối loạn kinh nguyệt',
-                  'Viêm ngứa / Khó chịu',
-                  'Tư vấn sức khỏe',
-                ]
-              : ['Khám định kỳ', 'Tư vấn sức khỏe']);
+        : [
+            'Khám phụ khoa định kỳ',
+            'Rối loạn kinh nguyệt',
+            'Viêm ngứa / Khó chịu',
+            'Tư vấn sức khỏe',
+          ];
 
     return Container(
       width: double.infinity,
@@ -2134,9 +2123,7 @@ class _BookingScreenState extends State<BookingScreen> {
             label: 'Chuyên khoa:',
             value: bookingProvider.selectedCategory == 'prenatal'
                 ? 'Khám thai & Quản lý thai kỳ'
-                : (bookingProvider.selectedCategory == 'gynecology'
-                      ? 'Khám phụ khoa & Tầm soát'
-                      : 'Sản - Phụ khoa khác'),
+                : 'Khám phụ khoa & Tầm soát',
             valueColor: AppColors.primary,
           ),
           const SizedBox(height: 8),
@@ -2273,7 +2260,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 const SizedBox(height: 8),
                 _buildSummaryRow(
                   label: 'Hình thức tiếp đón:',
-                  value: 'Tiếp đón ưu tiên AI',
+                  value: 'Tiếp đón ưu tiên',
                   valueColor: AppColors.success,
                 ),
               ],

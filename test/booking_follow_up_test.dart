@@ -320,6 +320,17 @@ void main() {
       // Mode switcher in new-booking mode must not overflow at 360dp width
       expect(tester.takeException(), isNull);
       expect(find.text('Đặt lịch khám trực tuyến'), findsOneWidget);
+      expect(find.text('Khám thai'), findsWidgets);
+      expect(find.text('Khám phụ khoa'), findsOneWidget);
+      expect(find.text('Sản - Phụ khoa khác'), findsNothing);
+
+      provider.setSelectedCategory('other');
+      expect(provider.selectedCategory, 'prenatal');
+      provider.setSelectedCategory('gynecology');
+      expect(provider.selectedCategory, 'gynecology');
+      provider.setSelectedCategory('prenatal');
+      expect(provider.selectedCategory, 'prenatal');
+      await tester.pumpAndSettle();
 
       // Tap "Tái khám theo hẹn" -> enters follow-up review screen (NOT time-slot wizard)
       await tester.tap(find.text('Tái khám theo hẹn'));

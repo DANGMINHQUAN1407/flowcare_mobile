@@ -80,7 +80,7 @@ class BookingProvider extends ChangeNotifier {
   String? _nationalId;
   String? _address;
 
-  // Selected OB/GYN Specialty Category: 'prenatal' | 'gynecology' | 'other'
+  // Selected OB/GYN Specialty Category: 'prenatal' | 'gynecology'
   String _selectedCategory = 'prenatal';
 
   // Obstetric Self-Declaration (Khám thai)
@@ -204,11 +204,8 @@ class BookingProvider extends ChangeNotifier {
       final list = _services.where((s) => s.isPrenatal).toList();
       return list.isNotEmpty ? list : _services;
     }
-    if (_selectedCategory == 'gynecology') {
-      final list = _services.where((s) => s.isGynecology).toList();
-      return list.isNotEmpty ? list : _services;
-    }
-    return _services;
+    final list = _services.where((s) => s.isGynecology).toList();
+    return list.isNotEmpty ? list : _services;
   }
 
   ServiceTypeModel? get selectedService => _selectedService;
@@ -368,8 +365,9 @@ class BookingProvider extends ChangeNotifier {
   }
 
   void setSelectedCategory(String category) {
-    if (_selectedCategory == category) return;
-    _selectedCategory = category;
+    final normalized = category == 'gynecology' ? 'gynecology' : 'prenatal';
+    if (_selectedCategory == normalized) return;
+    _selectedCategory = normalized;
 
     // Auto-select first matching service in the newly chosen category
     final matching = filteredServices;
