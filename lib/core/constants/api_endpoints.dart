@@ -30,6 +30,8 @@ class ApiEndpoints {
       '/patients/me/encounters/${Uri.encodeComponent(encounterId)}/visit-summary';
   static String paraclinicalPlan(String encounterId) =>
       '/encounters/$encounterId/paraclinical-plan';
+  static String journeyStatus(String encounterId) =>
+      '/encounters/${Uri.encodeComponent(encounterId)}/journey-status';
   static String encounterCheckIn(String id) => '/encounters/$id/checkin';
 
   // Queue Tickets

@@ -14,9 +14,18 @@ import 'package:flowcare_mobile/models/visit_summary_model.dart';
 import 'package:flowcare_mobile/models/patient_visit_model.dart';
 import 'package:flowcare_mobile/models/route_optimization_model.dart';
 import 'package:flowcare_mobile/services/route_optimization_service.dart';
+import 'package:flowcare_mobile/services/medical_payment_service.dart';
 
 import 'home_journey_provider_test.dart' show fakeHome, FakeEncounters;
 import 'fixtures/journey_fixtures.dart';
+
+class _PaidOrders extends MedicalPaymentService {
+  @override
+  Future<Map<String, double>> getOutstandingMedicalOrders(
+    String encounterId,
+    String patientId,
+  ) async => const {};
+}
 
 class _VisitSummaryEncounters extends FakeEncounters {
   final requestedIds = <String>[];
@@ -173,7 +182,9 @@ void main() {
         addTearDown(session.clearSession);
         addTearDown(() => ApiClient.setAuthToken(null));
         final optimization = _NoFasterRoute();
+        final payment = _PaidOrders();
         addTearDown(optimization.close);
+        addTearDown(payment.close);
         final plan = activeTimedPlanJson()
           ..['encounterId'] = 'patient'
           ..['status'] = status
@@ -192,7 +203,10 @@ void main() {
           ChangeNotifierProvider<HomeProvider>.value(
             value: home,
             child: MaterialApp(
-              home: RouteScreen(optimizationService: optimization),
+              home: RouteScreen(
+                optimizationService: optimization,
+                paymentService: payment,
+              ),
             ),
           ),
         );

@@ -71,6 +71,7 @@ class ParaclinicalStepModel {
   final String? preExamOrderId;
   final String? serviceCode;
   final String serviceTypeName;
+  final String? assignedRoomId;
   final String roomName;
   final String? floor;
   final String? building;
@@ -99,6 +100,7 @@ class ParaclinicalStepModel {
     this.preExamOrderId,
     this.serviceCode,
     required this.serviceTypeName,
+    this.assignedRoomId,
     required this.roomName,
     required this.stepOrder,
     required this.status,
@@ -154,6 +156,7 @@ class ParaclinicalStepModel {
         _nonEmptyString(json['serviceName']) ??
         _nonEmptyString(json['serviceTypeName']) ??
         'Dịch vụ cận lâm sàng',
+    assignedRoomId: _nonEmptyString(json['assignedRoomId']),
     roomName: json['assignedRoomName']?.toString() ?? '',
     floor: json['assignedRoomFloor']?.toString(),
     building: json['assignedRoomBuilding']?.toString(),

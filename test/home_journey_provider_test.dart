@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flowcare_mobile/models/appointment_model.dart';
 import 'package:flowcare_mobile/models/encounter_summary_model.dart';
 import 'package:flowcare_mobile/models/follow_up_order_model.dart';
+import 'package:flowcare_mobile/models/journey_queue_status_model.dart';
 import 'package:flowcare_mobile/models/paraclinical_plan_model.dart';
 import 'package:flowcare_mobile/models/patient_model.dart';
 import 'package:flowcare_mobile/models/patient_visit_model.dart';
@@ -64,6 +65,12 @@ class FakeEncounters extends EncounterService {
     String encounterId,
   ) async => notifications;
   ParaclinicalPlanModel? plan = planFixture();
+  JourneyQueueStatus? queueStatus;
+
+  @override
+  Future<JourneyQueueStatus?> getJourneyQueueStatus(String encounterId) async =>
+      queueStatus;
+
   bool failPlan = false;
   Object? summaryError, planError, historyError, activeError;
   @override
@@ -275,6 +282,59 @@ void main() {
     home.logout();
     expect(home.notices, isEmpty);
     expect(home.journey, isNull);
+  });
+
+  test('A moved service shows the new room and queue number once', () async {
+    ParaclinicalPlanModel route(
+      String room,
+      int number, {
+      String id = 'plan',
+    }) => ParaclinicalPlanModel.fromJson({
+      'id': id,
+      'encounterId': 'visit-1',
+      'status': 'Active',
+      'source': 'MedicalOrders',
+      'steps': [
+        {
+          'id': 'nst',
+          'serviceName': 'Đo NST',
+          'stepOrder': 1,
+          'status': 'InQueue',
+          'assignedRoomId': room,
+          'assignedRoomName': 'Phòng $room',
+          'queueNumber': number,
+          'enqueuedAt': '2026-10-12T08:40:00+07:00',
+        },
+      ],
+    });
+    final encounters = FakeEncounters()
+      ..summary = summaryFixture(
+        status: 'InProgress',
+        queueStatus: 'InProgress',
+      )
+      ..plan = route('NST-02', 9);
+    final home = fakeHome(encounters: encounters);
+    addTearDown(home.dispose);
+    await home.loadHomeData();
+    expect(home.currentRoomTransferMessage, isNull);
+    encounters.plan = route('NST-03', 1);
+    await home.refreshJourney();
+    final message = home.currentRoomTransferMessage;
+    expect(message, contains('Phòng NST-03, số thứ tự mới #1'));
+    expect(message, contains('Giờ vào hàng của bạn được giữ nguyên'));
+    expect(
+      home.notices.where((notice) => notice.message == message),
+      hasLength(1),
+    );
+
+    await home.refreshJourney();
+    expect(
+      home.notices.where((notice) => notice.message == message),
+      hasLength(1),
+    );
+    encounters.plan = route('NST-04', 2, id: 'replacement');
+    await home.refreshJourney();
+    expect(home.currentRoomTransferMessage, isNull);
   });
 
   test('Network failure preserves the last successful route and timestamp, then recovers', () async {

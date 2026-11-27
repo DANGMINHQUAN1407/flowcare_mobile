@@ -2,6 +2,7 @@ import '../core/constants/api_endpoints.dart';
 import '../core/network/api_client.dart';
 import '../core/network/api_exceptions.dart';
 import '../models/encounter_summary_model.dart';
+import '../models/journey_queue_status_model.dart';
 import '../models/paraclinical_plan_model.dart';
 import '../models/patient_visit_model.dart';
 import '../models/visit_summary_model.dart';
@@ -90,6 +91,15 @@ class EncounterService {
       throw ApiException('Tóm tắt trả về không khớp với lượt khám đã chọn.');
     }
     return summary;
+  }
+
+  Future<JourneyQueueStatus?> getJourneyQueueStatus(String encounterId) async {
+    final response = await _apiClient.get<JourneyQueueStatus>(
+      ApiEndpoints.journeyStatus(encounterId),
+      fromJsonT: (json) =>
+          JourneyQueueStatus.fromJson(json as Map<String, dynamic>),
+    );
+    return response.data;
   }
 
   Future<DownloadedFile> downloadVisitAttachment(String attachmentId) =>

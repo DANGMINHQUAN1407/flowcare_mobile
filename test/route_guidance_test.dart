@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:flowcare_mobile/core/network/api_exceptions.dart';
 import 'package:flowcare_mobile/core/utils/hospital_time.dart';
+import 'package:flowcare_mobile/models/encounter_summary_model.dart';
+import 'package:flowcare_mobile/models/journey_queue_status_model.dart';
 import 'package:flowcare_mobile/models/paraclinical_plan_model.dart';
 import 'package:flowcare_mobile/providers/home_provider.dart';
 import 'package:flowcare_mobile/screens/route/route_screen.dart';
@@ -40,6 +42,80 @@ Future<HomeProvider> showRoute(
 }
 
 void main() {
+  test('Home priority uses the encounter code or label', () {
+    EncounterSummaryModel summary(Map<String, dynamic> fields) =>
+        EncounterSummaryModel.fromJson(fields);
+    expect(
+      summary({'priorityLevelCode': 'HIGH'}).priorityDisplayLabel,
+      'Cấp 2 - Ưu tiên',
+    );
+    expect(
+      summary({'priorityLevelCode': 'NORMAL'}).priorityDisplayLabel,
+      'Cấp 3 - Tiêu chuẩn',
+    );
+    expect(
+      summary({'priorityLevelLabel': 'Cấp 2 - Ưu tiên cao'})
+          .priorityDisplayLabel,
+      'Cấp 2 - Ưu tiên cao',
+    );
+    expect(
+      summary({'isEmergency': true}).priorityDisplayLabel,
+      'Cấp 1 - Cấp cứu',
+    );
+    expect(summary({}).priorityDisplayLabel, 'Chưa có thông tin ưu tiên');
+  });
+
+  testWidgets('Live wait and queue position apply only to the assigned step', (
+    tester,
+  ) async {
+    final encounters = activeEncounters()
+      ..queueStatus = JourneyQueueStatus.fromJson({
+        'encounterId': 'patient',
+        'planId': 'plan-1',
+        'currentStepId': 'xray',
+        'queuePosition': 8,
+        'estimatedWaitMinutesToCall': 45,
+      });
+    final home = await showRoute(tester, encounters);
+    final waitTile = find.byKey(const ValueKey('next-stop-wait'));
+    expect(
+      find.descendant(of: waitTile, matching: find.text('45 phút')),
+      findsOneWidget,
+    );
+    expect(find.text('Còn 8 lượt phía trước'), findsOneWidget);
+
+    encounters.queueStatus = JourneyQueueStatus.fromJson({
+      'encounterId': 'patient',
+      'planId': 'plan-1',
+      'currentStepId': 'xray',
+      'queuePosition': 0,
+      'estimatedWaitMinutesToCall': 0,
+    });
+    await home.refreshJourney();
+    await tester.pump();
+    expect(
+      find.descendant(of: waitTile, matching: find.text('0 phút')),
+      findsOneWidget,
+    );
+    expect(find.text('Không còn lượt phía trước'), findsOneWidget);
+
+    encounters.queueStatus = JourneyQueueStatus.fromJson({
+      'encounterId': 'patient',
+      'planId': 'plan-1',
+      'currentStepId': 'xray',
+      'currentRoomId': 'previous-room',
+      'queuePosition': 8,
+      'estimatedWaitMinutesToCall': 45,
+    });
+    await home.refreshJourney();
+    await tester.pump();
+    expect(
+      find.descendant(of: waitTile, matching: find.text('5 phút')),
+      findsOneWidget,
+    );
+    expect(find.text('Còn 8 lượt phía trước'), findsNothing);
+  });
+
   testWidgets(
     'OriginalOrder from the API explains that assistance has not optimized the route yet',
     (tester) async {

@@ -78,18 +78,15 @@ class JourneyStepTimingCard extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      JourneyTravelHighlight(
-        minutes: timing.travelMinutes,
-        historical: historical,
-      ),
-      const SizedBox(height: 10),
-      _row(
-        Icons.hourglass_empty_rounded,
-        historical
-            ? 'Chờ trước dịch vụ theo kế hoạch'
-            : 'Chờ trước dịch vụ dự kiến',
-        timing.waitBeforeServiceMinutes,
-      ),
+      if (historical) ...[
+        JourneyTravelHighlight(minutes: timing.travelMinutes, historical: true),
+        const SizedBox(height: 10),
+        _row(
+          Icons.hourglass_empty_rounded,
+          'Chờ trước dịch vụ theo kế hoạch',
+          timing.waitBeforeServiceMinutes,
+        ),
+      ],
       _row(
         Icons.medical_services_outlined,
         historical ? 'Thực hiện theo kế hoạch' : 'Thực hiện dự kiến',

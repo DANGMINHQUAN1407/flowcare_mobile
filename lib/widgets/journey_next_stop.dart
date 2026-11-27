@@ -103,7 +103,12 @@ class JourneyNextStop extends StatelessWidget {
         ? summary.estimatedWaitMinutes!.toDouble()
         : null;
     final travel = step.timing?.travelMinutes;
-    final wait = step.timing?.waitBeforeServiceMinutes ?? consultationWait;
+    final liveQueue = isStale ? null : journey.currentQueueStatus;
+    final ahead = liveQueue?.queuePosition;
+    final wait =
+        liveQueue?.estimatedWaitMinutesToCall?.toDouble() ??
+        step.timing?.waitBeforeServiceMinutes ??
+        consultationWait;
     return Column(
       key: const ValueKey('journey-next-stop'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,6 +138,14 @@ class JourneyNextStop extends StatelessWidget {
           Text(
             'Số thứ tự: #${step.queueNumber}',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
+        ],
+        if (ahead != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            ahead == 0
+                ? 'Không còn lượt phía trước'
+                : 'Còn $ahead lượt phía trước',
           ),
         ],
         const SizedBox(height: 14),

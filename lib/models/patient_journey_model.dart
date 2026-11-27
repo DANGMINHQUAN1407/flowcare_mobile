@@ -1,6 +1,7 @@
 import 'encounter_summary_model.dart';
 import 'paraclinical_plan_model.dart';
 import 'journey_timing_model.dart';
+import 'journey_queue_status_model.dart';
 
 enum JourneyStepState { pending, current, waiting, completed, skipped }
 
@@ -40,8 +41,33 @@ class PatientJourney {
   final EncounterSummaryModel summary;
   final ParaclinicalPlanModel? plan;
   final List<JourneyStep> steps;
+  final JourneyQueueStatus? _queueStatus;
 
-  const PatientJourney._(this.summary, this.plan, this.steps);
+  const PatientJourney._(
+    this.summary,
+    this.plan,
+    this.steps,
+    this._queueStatus,
+  );
+
+  JourneyQueueStatus? get currentQueueStatus {
+    final live = _queueStatus;
+    final current = currentStep;
+    if (live == null ||
+        current?.isService != true ||
+        live.encounterId != summary.encounterId ||
+        live.planId != plan?.id ||
+        live.currentStepId != current?.id) {
+      return null;
+    }
+    final service = plan?.steps
+        .where((step) => step.id == current!.id)
+        .firstOrNull;
+    return service?.status.toLowerCase() == 'inqueue' &&
+            service?.assignedRoomId == live.currentRoomId
+        ? live
+        : null;
+  }
 
   bool get isFinalized => summary.isFinalized;
   bool get shouldReturnToConsultation =>
@@ -96,8 +122,9 @@ class PatientJourney {
 
   factory PatientJourney.build(
     EncounterSummaryModel summary,
-    ParaclinicalPlanModel? plan,
-  ) {
+    ParaclinicalPlanModel? plan, {
+    JourneyQueueStatus? queueStatus,
+  }) {
     final finalized = summary.isFinalized;
     final timing = plan == null ? null : JourneyTiming.fromPlan(plan);
     final queue = summary.queueStatus?.toLowerCase() ?? '';
@@ -343,6 +370,11 @@ class PatientJourney {
             : null,
       ),
     );
-    return PatientJourney._(summary, plan, List.unmodifiable(steps));
+    return PatientJourney._(
+      summary,
+      plan,
+      List.unmodifiable(steps),
+      queueStatus,
+    );
   }
 }

@@ -95,6 +95,8 @@ class EncounterSummaryModel {
   final String patientName;
   final String encounterStatus;
   final bool isEmergency;
+  final String? priorityLevelCode;
+  final String? priorityLevelLabel;
   final String? recommendedDepartmentId;
   final String? departmentName;
   final int? estimatedWaitMinutes;
@@ -116,6 +118,8 @@ class EncounterSummaryModel {
     required this.patientName,
     required this.encounterStatus,
     required this.isEmergency,
+    this.priorityLevelCode,
+    this.priorityLevelLabel,
     this.recommendedDepartmentId,
     this.departmentName,
     this.estimatedWaitMinutes,
@@ -138,6 +142,17 @@ class EncounterSummaryModel {
 
   bool get isConsulting => queueStatus?.toLowerCase() == 'inprogress';
 
+  String get priorityDisplayLabel {
+    final label = priorityLevelLabel?.trim();
+    if (label != null && label.isNotEmpty) return label;
+    return switch (priorityLevelCode?.trim().toUpperCase()) {
+      'EMERGENCY' => 'Cấp 1 - Cấp cứu',
+      'HIGH' => 'Cấp 2 - Ưu tiên',
+      'NORMAL' => 'Cấp 3 - Tiêu chuẩn',
+      _ => isEmergency ? 'Cấp 1 - Cấp cứu' : 'Chưa có thông tin ưu tiên',
+    };
+  }
+
   factory EncounterSummaryModel.fromJson(Map<String, dynamic> json) {
     var rawOrders = json['preExamOrders'];
     List<PreExamOrderModel> orders = [];
@@ -153,6 +168,10 @@ class EncounterSummaryModel {
       patientName: json['patientName']?.toString() ?? '',
       encounterStatus: json['encounterStatus']?.toString() ?? '',
       isEmergency: json['isEmergency'] == true,
+      priorityLevelCode: (json['priorityLevelCode'] ?? json['priorityCode'])
+          ?.toString(),
+      priorityLevelLabel: (json['priorityLevelLabel'] ?? json['priorityLabel'])
+          ?.toString(),
       recommendedDepartmentId: json['recommendedDepartmentId']?.toString(),
       departmentName: json['departmentName']?.toString(),
       estimatedWaitMinutes: json['estimatedWaitMinutes'] is num
@@ -191,6 +210,8 @@ class EncounterSummaryModel {
       'patientName': patientName,
       'encounterStatus': encounterStatus,
       'isEmergency': isEmergency,
+      'priorityLevelCode': priorityLevelCode,
+      'priorityLevelLabel': priorityLevelLabel,
       'recommendedDepartmentId': recommendedDepartmentId,
       'departmentName': departmentName,
       'estimatedWaitMinutes': estimatedWaitMinutes,

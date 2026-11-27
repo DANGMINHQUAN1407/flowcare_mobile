@@ -209,6 +209,7 @@ class _RouteScreenState extends State<RouteScreen> {
   Widget build(BuildContext context) => Consumer<HomeProvider>(
     builder: (context, home, _) {
       final journey = home.journey;
+      final roomTransfer = home.currentRoomTransferMessage;
       final paymentJourney = _paymentJourney(home);
       final orders = _plannedOrders(paymentJourney);
       // Offers are measured against the running plan, not a separate staff
@@ -286,6 +287,14 @@ class _RouteScreenState extends State<RouteScreen> {
                     isStale: home.isJourneyStale,
                     hasSnapshot: home.lastUpdatedAt != null,
                   ),
+                  if (roomTransfer != null) ...[
+                    const SizedBox(height: 12),
+                    ListTile(
+                      tileColor: AppColors.primaryLight,
+                      leading: const Icon(Icons.swap_horiz_rounded),
+                      title: Text(roomTransfer),
+                    ),
+                  ],
                   if (journey.plan?.followsOriginalOrder == true) ...[
                     const SizedBox(height: 12),
                     const Text(

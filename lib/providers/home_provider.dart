@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import '../models/appointment_model.dart';
 import '../models/encounter_summary_model.dart';
 import '../models/follow_up_order_model.dart';
+import '../models/journey_queue_status_model.dart';
 import '../models/notification_model.dart';
 import '../models/paraclinical_plan_model.dart';
 import '../models/patient_journey_model.dart';
@@ -90,6 +91,7 @@ class HomeProvider extends ChangeNotifier {
   AppointmentCheckModel? _appointmentCheck;
   EncounterSummaryModel? _encounterSummary;
   ParaclinicalPlanModel? _paraclinicalPlan;
+  JourneyQueueStatus? _journeyQueueStatus;
   QueueTicketModel? _queueTicket;
   FollowUpOrderModel? _latestFollowUpOrder;
   List<PatientVisitModel> _visits = [];
@@ -117,6 +119,18 @@ class HomeProvider extends ChangeNotifier {
   FollowUpOrderModel? get latestFollowUpOrder => _latestFollowUpOrder;
   List<PatientVisitModel> get visits => List.unmodifiable(_visits);
   List<JourneyNotice> get notices => List.unmodifiable(_notices);
+
+  String? get currentRoomTransferMessage {
+    final current = journey;
+    final step = current == null ? null : _currentMovableService(current);
+    if (_isJourneyStale || step == null) return null;
+    final prefix = _roomTransferKey(current!, step);
+    return _notices
+        .where((notice) => notice.key.startsWith(prefix))
+        .firstOrNull
+        ?.message;
+  }
+
   String? get inboxError => _inboxError;
   int get unreadNoticeCount => _notices.where((n) => !n.isRead).length;
   String? get patientId => _sessionService.patientId;
@@ -127,7 +141,11 @@ class HomeProvider extends ChangeNotifier {
       _encounterSummary != null && !_encounterSummary!.isFinalized;
   PatientJourney? get journey => _encounterSummary == null
       ? null
-      : PatientJourney.build(_encounterSummary!, _paraclinicalPlan);
+      : PatientJourney.build(
+          _encounterSummary!,
+          _paraclinicalPlan,
+          queueStatus: _journeyQueueStatus,
+        );
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -383,11 +401,27 @@ class HomeProvider extends ChangeNotifier {
         _queueService.getQueueTicketByEncounter(encounterId),
       ]);
       if (!_isCurrent(version)) return;
+      final plan = result[0] as ParaclinicalPlanModel?;
+      JourneyQueueStatus? queueStatus;
+      if (!summary.isFinalized &&
+          plan != null &&
+          plan.status.toLowerCase() == 'active' &&
+          plan.steps.any((step) => step.status.toLowerCase() == 'inqueue')) {
+        try {
+          queueStatus = await _encounterService
+              .getJourneyQueueStatus(encounterId)
+              .timeout(const Duration(seconds: 4), onTimeout: () => null);
+        } on ApiException {
+          // Route guidance still has the plan estimates when live wait is unavailable.
+        }
+      }
+      if (!_isCurrent(version)) return;
       // Commit one coherent summary/plan snapshot. A partial refresh must not
       // make old room assignments look newly synchronized.
       _encounterSummary = summary;
       _sessionService.setActiveEncounterId(summary.encounterId);
-      _paraclinicalPlan = result[0] as ParaclinicalPlanModel?;
+      _paraclinicalPlan = plan;
+      _journeyQueueStatus = queueStatus;
       _queueTicket = result[1] as QueueTicketModel?;
     } catch (error) {
       if (!_isCurrent(version)) return;
@@ -395,6 +429,7 @@ class HomeProvider extends ChangeNotifier {
         _encounterSummary = summary;
         _sessionService.setActiveEncounterId(summary.encounterId);
         _paraclinicalPlan = null;
+        _journeyQueueStatus = null;
         _queueTicket = null;
         _lastUpdatedAt = null;
       }
@@ -560,6 +595,23 @@ class HomeProvider extends ChangeNotifier {
     );
   }
 
+  ParaclinicalStepModel? _currentMovableService(PatientJourney journey) {
+    final plan = journey.plan;
+    if (plan == null || plan.status.toLowerCase() != 'active') return null;
+    final current = journey.currentStep;
+    if (current?.isService != true) return null;
+    return plan.steps
+        .where(
+          (step) =>
+              step.id == current!.id &&
+              const {'pending', 'inqueue'}.contains(step.status.toLowerCase()),
+        )
+        .firstOrNull;
+  }
+
+  String _roomTransferKey(PatientJourney journey, ParaclinicalStepModel step) =>
+      'route-room:${journey.summary.encounterId}:${journey.plan!.id}:${step.id}:${step.assignedRoomId}:';
+
   void _announceChanges(PatientJourney before, PatientJourney after) {
     if (!before.isFinalized && after.isFinalized) {
       _addNotice(
@@ -567,7 +619,32 @@ class HomeProvider extends ChangeNotifier {
         'Bác sĩ đã hoàn tất lượt khám của bạn.',
       );
     }
+    final current = _currentMovableService(after);
+    final previous = _currentMovableService(before);
+    String? movedStepId;
+    if (current != null &&
+        previous != null &&
+        before.plan?.id == after.plan?.id &&
+        previous.id == current.id &&
+        previous.assignedRoomId != null &&
+        current.assignedRoomId != null &&
+        previous.assignedRoomId != current.assignedRoomId &&
+        current.roomName.isNotEmpty) {
+      movedStepId = current.id;
+      final keptWait =
+          previous.enqueuedAt != null &&
+          previous.enqueuedAt == current.enqueuedAt;
+      final number = current.queueNumber;
+      _addNotice(
+        '${_roomTransferKey(after, current)}${previous.assignedRoomId}',
+        'Bạn được chuyển sang ${current.roomName}'
+            '${number == null ? '' : ', số thứ tự mới #$number'}.'
+            '${keptWait ? ' Giờ vào hàng của bạn được giữ nguyên.' : ''}',
+        encounterId: after.summary.encounterId,
+      );
+    }
     for (final step in after.steps) {
+      if (step.id == movedStepId) continue;
       final old = before.steps.where((s) => s.id == step.id).firstOrNull;
       if (old != null &&
           (old.state != step.state ||
@@ -766,6 +843,7 @@ class HomeProvider extends ChangeNotifier {
   void _clearJourney() {
     _encounterSummary = null;
     _paraclinicalPlan = null;
+    _journeyQueueStatus = null;
     _queueTicket = null;
     _journeyError = null;
     _lastUpdatedAt = null;
