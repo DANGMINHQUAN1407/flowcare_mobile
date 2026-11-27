@@ -422,7 +422,7 @@ class ProfileScreen extends StatelessWidget {
         _buildActionTile(
           icon: Icons.info_outline_rounded,
           title: 'Phiên bản ứng dụng',
-          subtitle: 'FlowCare AI Patient Mobile v${AppConstants.appVersion}',
+          subtitle: 'FlowCare Patient Mobile v${AppConstants.appVersion}',
         ),
       ],
     );

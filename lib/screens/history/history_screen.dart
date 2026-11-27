@@ -233,7 +233,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     Text(
                                       patient != null
                                           ? 'Sinh: ${_formatDobAndAge(patient.dob)} • Giới tính: ${patient.gender ?? 'Nữ'}'
-                                          : 'Đồng bộ hồ sơ khám bệnh FlowCare AI',
+                                          : 'Đồng bộ hồ sơ khám bệnh FlowCare',
                                       style: const TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w500,

@@ -1,5 +1,5 @@
 class AppConstants {
-  static const String appName = 'FlowCare AI';
+  static const String appName = 'FlowCare';
   static const String appSubtitle = 'Bệnh viện Phụ Sản Thông Minh';
   static const String appVersion = '1.0.0';
 

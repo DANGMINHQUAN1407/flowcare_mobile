@@ -89,6 +89,21 @@ void main() {
     expect(find.text('Bệnh viện Phụ Sản Thông Minh'), findsOneWidget);
     expect(find.text('Đặt lịch khám'), findsWidgets);
     expect(find.text('Hồ sơ thai kỳ'), findsOneWidget);
+
+    final greetingCard = find
+        .ancestor(
+          of: find.textContaining('Xin chào'),
+          matching: find.byType(Container),
+        )
+        .first;
+    expect(
+      find.descendant(of: greetingCard, matching: find.text('Đặt lịch')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: greetingCard, matching: find.text('Làm mới')),
+      findsNothing,
+    );
   });
 
   testWidgets('BookingScreen renders OB/GYN categories and step wizard', (

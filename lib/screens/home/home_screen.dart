@@ -62,7 +62,7 @@ class HomeScreen extends StatelessWidget {
 
                     // 3. Quick Actions (Sản - Phụ khoa chuyên sâu)
                     const Text(
-                      'Dịch vụ & Tiện ích Phụ Sản AI',
+                      'Dịch vụ & Tiện ích Phụ Sản',
                       style: AppTextStyles.titleMedium,
                     ),
                     const SizedBox(height: 12),
@@ -102,7 +102,7 @@ class HomeScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'FlowCare AI',
+                  'FlowCare',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -221,7 +221,7 @@ class HomeScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  'FlowCare AI',
+                  'FlowCare',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 10,
@@ -251,60 +251,25 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: 42,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _openNewBookingTab(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF00478D),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Icon(Icons.calendar_month_rounded, size: 16),
-                    label: const Text(
-                      'Đặt lịch',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
+          SizedBox(
+            width: double.infinity,
+            height: 42,
+            child: ElevatedButton.icon(
+              onPressed: () => _openNewBookingTab(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF00478D),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: SizedBox(
-                  height: 42,
-                  child: OutlinedButton.icon(
-                    onPressed: () => homeProvider.loadHomeData(isRefresh: true),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white, width: 1.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Icon(
-                      Icons.confirmation_number_outlined,
-                      size: 16,
-                    ),
-                    label: const Text(
-                      'Làm mới',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
+              icon: const Icon(Icons.calendar_month_rounded, size: 16),
+              label: const Text(
+                'Đặt lịch',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
               ),
-            ],
+            ),
           ),
         ],
       ),
@@ -620,8 +585,11 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    weeks == null ? 'Chưa ghi nhận tuổi thai' :
-                        days == null ? 'Tuần $weeks' : 'Tuần $weeks + $days ngày',
+                    weeks == null
+                        ? 'Chưa ghi nhận tuổi thai'
+                        : days == null
+                        ? 'Tuần $weeks'
+                        : 'Tuần $weeks + $days ngày',
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
@@ -667,9 +635,6 @@ class HomeScreen extends StatelessWidget {
     final serviceName =
         homeProvider.activeAppointment?.serviceTypeName ??
         'Khám Sản - Phụ Khoa';
-    final priority = encounter.isEmergency
-        ? 'Cấp 1 - Cấp cứu'
-        : 'Cấp 3 - Tiêu chuẩn';
     final statusText = encounter.encounterStatus.toLowerCase() == 'inqueue'
         ? 'Đang Chờ Khám'
         : (encounter.encounterStatus.toLowerCase() == 'inconsultation'
@@ -815,7 +780,7 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    priority,
+                    encounter.priorityDisplayLabel,
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -1162,5 +1127,4 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
-
 }

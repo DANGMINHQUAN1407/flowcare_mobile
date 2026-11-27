@@ -71,7 +71,7 @@ class HomePlaceholderScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               const Text(
-                'FlowCare AI Mobile Foundation',
+                'FlowCare Mobile Foundation',
                 style: AppTextStyles.headlineSmall,
                 textAlign: TextAlign.center,
               ),
